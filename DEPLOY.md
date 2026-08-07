@@ -194,26 +194,54 @@ curl -X POST https://你部署的邮件根地址/api/public/emailList \
 
 ## 7.5 多账号续期（可选）
 
-想同时管理**多个 Euserv 账号**时，不需要新增任何变量——把每个环境变量的值用**英文逗号分隔**按位置一一对应即可：
+想同时管理**多个 Euserv 账号**时，不需要新增任何变量——把每个环境变量的值用**英文逗号分隔**按位置一一对应。
 
-| Secret | 单账号 | 双账号示例 |
+**先说结论**：**账号**（`EUSERV_USERNAME/PASSWORD/2FA`）永远是逗号分隔、按位置对应；**邮箱服务**（`EMAIL_USERNAME/PASSWORD/CLOUD_MAIL_API_URL/EMAIL_HOST`）默认**共用一套**，只填一次即可，无需按账号重复。
+
+| Secret | 单个账号 | 多个账号共用同一邮箱服务 |
 |---|---|---|
 | `EUSERV_USERNAME` | `user1@example.com` | `user1@example.com,user2@example.com` |
 | `EUSERV_PASSWORD` | `pw1` | `pw1,pw2` |
 | `EUSERV_2FA` | `KEY1` | `KEY1,KEY2` |
-| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example,admin2@mail.example` |
-| `EMAIL_PASSWORD` | `mpw` | `mpw,mpw2` |
-| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example`（共用同一实例时只填一次）|
-| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com`（共用时只填一次）|
+| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example`（共用，只填一次）|
+| `EMAIL_PASSWORD` | `mpw` | `mpw`（共用，只填一次）|
+| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example`（共用，只填一次）|
+| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com`（共用，只填一次）|
 
-规则：
+> 何时才需要给邮箱相关变量写多个值？**只有当多个账号各自的邮箱本来就不同**（每个账号有独立的 Cloud Mail 管理员 / 各自的 IMAP 邮箱）时才写多个值。绝大多数情况共用一套邮箱服务，只填一次。
 
-- **触发条件**：只要 `EUSERV_USERNAME` 含逗号，即进入多账号模式；不含逗号则完全按单账号运行，旧配置不受影响。
-- **单值自动广播**：`EMAIL_USERNAME`、`EMAIL_PASSWORD`、`CLOUD_MAIL_API_URL`、`EMAIL_HOST`、`EUSERV_2FA` 等**只写一个值**时，所有账号共用这一个值——多个账号共用同一个 Cloud Mail 实例或同一个 IMAP 服务时，这些只需填一次，不用重复写。
-- **多值按位置对应**：某变量给了逗号分隔的多个值时，按位置与账号一一对应；空缺位置按空处理（例如某账号没有独立的 Cloud Mail 管理员，对应位置留空）。
-- **邮箱方案可混用**：账号 1 用 Cloud Mail、账号 2 用 IMAP 也没问题（`CLOUD_MAIL_API_URL` 相应位置留空，另一个填）。
-- **通知与调度**：所有账号运行结束后**汇总成一份**邮件/Telegram 报告；cron 自动设为所有账号中**最早**的下次续约日期。
-- **退出码**：任一账号失败则整体失败（触发 workflow 重试），全部跳过则整体跳过。
+**触发条件**：`EUSERV_USERNAME` 含逗号即进入多账号模式；不含逗号则完全按单账号运行，旧配置不受影响。
+
+##### 示例 ①：两个账号共用同一套邮箱服务
+
+```
+EUSERV_USERNAME    = user1@example.com,user2@example.com   # 账号不同，按位置
+EUSERV_PASSWORD    = pw1,pw2
+EUSERV_2FA         = KEY1,KEY2
+EMAIL_USERNAME     = admin@mail.example     # 邮箱服务共用，只填一次
+EMAIL_PASSWORD     = mpw
+CLOUD_MAIL_API_URL = https://mail.example     # 共用，只填一次
+EMAIL_HOST         =                         # Cloud Mail 模式下可留空
+```
+
+##### 示例 ②：混用——账号 1 走 IMAP、账号 2 走 Cloud Mail
+
+此例邮箱服务**不共用**：账号 1 用自己的 IMAP 邮箱收 PIN，账号 2 用 Cloud Mail API（管理员凭据不同）。关键：`EMAIL_USERNAME/PASSWORD` 必须按位置给两个账号分别填（IMAP 邮箱 ≠ Cloud 管理员），url/host 的空位要显式写出来（`url,` / `,host`）：
+
+```
+EUSERV_USERNAME    = user1@example.com,user2@example.com
+EUSERV_PASSWORD    = pw1,pw2
+EUSERV_2FA         = KEY1,KEY2
+EMAIL_HOST         = imap.gmail.com,           # 账号1 用 IMAP；账号2 无 host（走 Cloud Mail）
+CLOUD_MAIL_API_URL = ,https://mail.example   # 账号1 无 Cloud（走 IMAP）；账号2 用 Cloud Mail
+EMAIL_USERNAME     = imap-mailbox@outlook.com,admin@mail.example   # 位置对应：IMAP 邮箱、Cloud 管理员
+EMAIL_PASSWORD     = imap_app_pw,cloud_mpw
+```
+
+> 只填一个 `EMAIL_USERNAME`（比如只填 IMAP 邮箱）会被**广播给所有账号**，账号 2 会拿 IMAP 邮箱去 Cloud Mail 登录 → 失败。混用时必须按位置填两个不同的值。
+
+**通知与调度**：所有账号运行结束后**汇总成一份**邮件/Telegram 报告；cron 自动设为所有账号中**最早**的下次续约日期。
+**退出码**：任一账号失败则整体失败（触发 workflow 重试），全部跳过则整体跳过。
 
 ---
 

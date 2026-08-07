@@ -292,25 +292,59 @@
 
 #### 多账号续期（可选）
 
-想同时管理**多个 Euserv 账号**时，**不需要新增任何变量**——把每个环境变量的值用**英文逗号分隔**，按位置一一对应即可：
+想同时管理**多个 Euserv 账号**时，**不需要新增任何变量**——把每个环境变量的值用**英文逗号分隔**，按位置一一对应即可。
 
-| Secret | 单账号 | 双账号示例 |
+**先说结论**：
+- **账号是不同的**（登录名、密码、2FA）→ 永远逗号分隔，按位置一一对应。
+- **邮箱服务是共用的**（同一个 Cloud Mail 实例 / 同一套 IMAP）→ 只填一个值就行，其余账号自动继承。
+- **邮箱服务要分开**（账号 1 走 IMAP、账号 2 走 Cloud Mail）→ 见下面专门示例，需写空位。
+
+| Secret | 单个账号 | 多个账号共用同一邮箱服务 |
 |---|---|---|
 | `EUSERV_USERNAME` | `user1@example.com` | `user1@example.com,user2@example.com` |
 | `EUSERV_PASSWORD` | `pw1` | `pw1,pw2` |
 | `EUSERV_2FA` | `KEY1` | `KEY1,KEY2` |
-| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example,admin2@mail.example` |
-| `EMAIL_PASSWORD` | `mpw` | `mpw,mpw2` |
-| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example`（共用同一实例时只填一次）|
-| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com`（共用时只填一次）|
+| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example`（共用，只填一次）|
+| `EMAIL_PASSWORD` | `mpw` | `mpw`（共用，只填一次）|
+| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example`（共用，只填一次）|
+| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com`（共用，只填一次）|
 
-规则：
+> 什么时候需要给 `EMAIL_USERNAME/PASSWORD/CLOUD_MAIL_API_URL/EMAIL_HOST` 也写多个值？
+> **只有当多个账号各自的邮箱本来就不同**（每个账号有自己独立的 Cloud Mail 管理员 / 各自的 IMAP 邮箱）时才写多个值。绝大多数情况它们共用一套，只填一次。
 
-- **触发条件**：`EUSERV_USERNAME` 含逗号即进入多账号模式；不含逗号则完全按单账号运行，旧配置不受影响。
-- **单值自动广播**：`EMAIL_USERNAME`、`EMAIL_PASSWORD`、`CLOUD_MAIL_API_URL`、`EMAIL_HOST`、`EUSERV_2FA` 等只要**只写一个值**，所有账号就共用这一个值——多账号共用同一个 Cloud Mail 实例或同一个 IMAP 服务时，这些只需填一次，不用重复写。
-- **多值按位置对应**：某变量若给了逗号分隔的多个值，则按位置与账号一一对应；低于账号数时的空缺位置按空处理（例如某账号没有独立的 Cloud Mail 管理员，对应位置留空）。
-- **邮箱方案可混用**：账号 1 用 Cloud Mail、账号 2 用 IMAP 均可（`CLOUD_MAIL_API_URL` 相应位置留空）。
-- **通知与调度**：所有账号运行结束后**汇总成一份**邮件/Telegram 报告；cron 自动设为所有账号中**最早**的下次续约日期；任一账号失败则整体失败（触发重试）。
+**触发条件**：`EUSERV_USERNAME` 含逗号即进入多账号模式；不含逗号则完全按单账号运行，旧配置不受影响。
+
+**通知与调度**：所有账号运行结束后**汇总成一份**邮件/Telegram 报告；cron 自动设为所有账号中**最早**的下次续约日期；任一账号失败则整体失败（触发重试）。
+
+##### 多账号示例 ①：两个账号共用同一套邮箱服务
+
+账号 1 和账号 2 的 Euserv 账号不同，但都用**同一个** Cloud Mail 实例（或同一套 IMAP）收 PIN：
+
+```
+EUSERV_USERNAME    = user1@example.com,user2@example.com   # 按位置
+EUSERV_PASSWORD    = pw1,pw2
+EUSERV_2FA         = KEY1,KEY2
+EMAIL_USERNAME     = admin@mail.example     # 共用，只填一次
+EMAIL_PASSWORD     = mpw
+CLOUD_MAIL_API_URL = https://mail.example     # 共用，只填一次
+EMAIL_HOST         =                         # Cloud Mail 模式下可留空
+```
+
+##### 多账号混用 ②：账号 1 走 IMAP、账号 2 走 Cloud Mail
+
+此时**邮箱服务要分开**——账号 1 用自己的 IMAP 邮箱收 PIN，账号 2 用 Cloud Mail API 收 PIN（管理员凭据不同）。关键：`EMAIL_USERNAME/PASSWORD` 必须按位置给两个账号分别填（IMAP 邮箱 ≠ Cloud 管理员），并把 url/host 空位显式写出来：
+
+```
+EUSERV_USERNAME    = user1@example.com,user2@example.com
+EUSERV_PASSWORD    = pw1,pw2
+EUSERV_2FA         = KEY1,KEY2
+EMAIL_HOST         = imap.gmail.com,           # 账号1 用 IMAP；账号2 无 host（走 Cloud）
+CLOUD_MAIL_API_URL = ,https://mail.example   # 账号1 无 Cloud（走 IMAP）；账号2 用 Cloud
+EMAIL_USERNAME     = imap-mailbox@outlook.com,admin@mail.example   # 位置对应：IMAP 邮箱、Cloud 管理员
+EMAIL_PASSWORD     = imap_app_pw,cloud_mpw
+```
+
+> 只填一个 `EMAIL_USERNAME`（比如只填 IMAP 的邮箱）时，它会被**广播给所有账号**，账号 2 就会拿 IMAP 邮箱去 Cloud 登录 → 失败。所以混用时必须按位置填两个不同的值。
 
 #### 第 6 步：手动运行工作流测试
 
@@ -598,25 +632,58 @@ To also receive the run report in Telegram (instead of, or alongside, the email 
 
 #### Renewing multiple accounts (optional)
 
-To manage **several Euserv accounts** with the same repository, **no new variables are needed** — put comma-separated values in the same environment variables, aligned by position:
+To manage **several Euserv accounts** with the same repository, **no new variables are needed** — put comma-separated values in the same environment variables:
 
-| Secret | Single account | Two-account example |
+**The short version:**
+- **Accounts differ** (username / password / 2FA) → always comma-separated, aligned by position.
+- **Mailbox service is shared** (one Cloud Mail instance / one IMAP server) → fill the mailbox secrets **once**; every account inherits them.
+- **Mailbox services differ** (account 1 = IMAP, account 2 = Cloud Mail) → see the dedicated mixing example below; it needs placeholder slots.
+
+| Secret | Single account | Multi-account, shared mailbox service |
 |---|---|---|
 | `EUSERV_USERNAME` | `user1@example.com` | `user1@example.com,user2@example.com` |
 | `EUSERV_PASSWORD` | `pw1` | `pw1,pw2` |
 | `EUSERV_2FA` | `KEY1` | `KEY1,KEY2` |
-| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example,admin2@mail.example` |
-| `EMAIL_PASSWORD` | `mpw` | `mpw,mpw2` |
-| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example` (single value is shared by all accounts) |
-| `EMAIL_HOST` (IMAP mode) | `imap.gmail.com` | `imap.gmail.com` (shared when only one value is given) |
+| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example` (shared, fill once) |
+| `EMAIL_PASSWORD` | `mpw` | `mpw` (shared, fill once) |
+| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example` (shared, fill once) |
+| `EMAIL_HOST` (IMAP mode) | `imap.gmail.com` | `imap.gmail.com` (shared, fill once) |
 
-Rules:
+> When should `EMAIL_USERNAME/PASSWORD/CLOUD_MAIL_API_URL/EMAIL_HOST` hold multiple values too? **Only when each account genuinely has a different mailbox of its own** (its own Cloud Mail admin / its own IMAP inbox). In almost all cases they are shared, so fill them once.
 
-- **Trigger**: as soon as `EUSERV_USERNAME` contains a comma, multi-account mode is enabled; without a comma the script behaves exactly as before (single account).
-- **Single value = shared**: if a variable (`EMAIL_USERNAME`, `EMAIL_PASSWORD`, `CLOUD_MAIL_API_URL`, `EMAIL_HOST`, `EUSERV_2FA`, ...) contains **only one value**, every account reuses it — e.g., several accounts on the same Cloud Mail instance or the same IMAP server only need to fill it once.
-- **Multiple values = position-based**: when a variable has several comma-separated values, the N-th value belongs to the N-th account; missing positions stay empty (e.g., an account without a dedicated Cloud Mail admin).
-- **Mixed mailboxes:** account 1 can use Cloud Mail while account 2 uses IMAP (leave the matching `CLOUD_MAIL_API_URL` slot empty).
-- **Reporting & scheduling:** after all accounts finish, the email/Telegram report is **sent once as a summary**; the cron is set to the **earliest** next-renewal date across all accounts; if any account fails the whole run fails (triggering the retry).
+**Trigger**: as soon as `EUSERV_USERNAME` contains a comma, multi-account mode is enabled; without a comma the script behaves exactly as before (single account).
+
+**Reporting & scheduling**: after all accounts finish, the email/Telegram report is **sent once as a summary**; the cron is set to the **earliest** next-renewal date across all accounts; if any account fails the whole run fails (triggering the retry).
+
+##### Example ①: two accounts sharing one mailbox service
+
+Both accounts are on the **same** Cloud Mail instance (or the same IMAP server):
+
+```
+EUSERV_USERNAME    = user1@example.com,user2@example.com   # position-based
+EUSERV_PASSWORD    = pw1,pw2
+EUSERV_2FA         = KEY1,KEY2
+EMAIL_USERNAME     = admin@mail.example       # shared, fill once
+EMAIL_PASSWORD     = mpw
+CLOUD_MAIL_API_URL = https://mail.example     # shared, fill once
+EMAIL_HOST         =                          # empty in Cloud Mail mode
+```
+
+##### Example ②: mixing — account 1 uses IMAP, account 2 uses Cloud Mail
+
+Here the mailbox services **differ**: account 1 reads the PIN from its own IMAP inbox, account 2 via Cloud Mail API (a different admin credential). Key: `EMAIL_USERNAME` / `EMAIL_PASSWORD` must hold **two position-matched values** (the IMAP mailbox ≠ the Cloud admin), and the url/host slots must be written explicitly:
+
+```
+EUSERV_USERNAME    = user1@example.com,user2@example.com
+EUSERV_PASSWORD    = pw1,pw2
+EUSERV_2FA         = KEY1,KEY2
+EMAIL_HOST         = imap.gmail.com,           # account 1 = IMAP; account 2 has no host (uses Cloud)
+CLOUD_MAIL_API_URL = ,https://mail.example   # account 1 has no Cloud URL (uses IMAP); account 2 uses Cloud
+EMAIL_USERNAME     = imap-mailbox@outlook.com,admin@mail.example   # by position: IMAP inbox, Cloud admin
+EMAIL_PASSWORD     = imap_app_pw,cloud_mpw
+```
+
+> If you only fill one `EMAIL_USERNAME` (e.g. just the IMAP mailbox), it is **broadcast to every account** — account 2 would then try to log into Cloud Mail with the IMAP credentials and fail. In a mixed setup you must provide two different values by position.
 
 #### Step 3: Manually Run the Workflow to Test
 
