@@ -360,8 +360,13 @@ class RenewalBot:
         msg["From"] = sender
         msg["To"] = recipient
         try:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS)
-            server.starttls()
+            if SMTP_PORT == 465:
+                server = smtplib.SMTP_SSL(
+                    SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS
+                )
+            else:
+                server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS)
+                server.starttls()
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.sendmail(SMTP_USERNAME, [recipient], msg.as_string())
             server.quit()

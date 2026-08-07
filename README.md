@@ -264,7 +264,7 @@
 | `SMTP_USERNAME`      | `user@163.com`                  | **(可选)** SMTP 登录账号（发信邮箱，如 163/Gmail 及其应用专用密码）。**默认回退用 `EMAIL_USERNAME`**；Cloud Mail 模式下必须单独指定，否则无法发信。                 |
 | `SMTP_PASSWORD`      | `smtp_auth_code`                | **(可选)** 与 `SMTP_USERNAME` 对应的 SMTP 密码（163 用「授权码」）。同上方回退规则。                                                                                 |
 | `SMTP_HOST`          | `smtp.gmail.com`                 | **(可选)** SMTP 服务器地址。不填则依据 `EMAIL_HOST`（把 `imap` 替换为 `smtp`）推断；Cloud Mail 模式下需要手动指定，否则无法发报告。                                  |
-| `SMTP_PORT`          | `587`                             | **(可选)** SMTP 端口。默认 587。                                                                                                                            |
+| `SMTP_PORT`          | `465`                             | **(可选)** SMTP 端口。默认 465（隐式 SSL，自动用 `SMTP_SSL`）；用 587 则自动走 STARTTLS。                                                    |
 | `TG_BOT_TOKEN`       | `123456:ABC-DEF...`               | **(可选)** Telegram Bot Token。配置后运行报告会同时推送到 Telegram。详见下方「Telegram 推送」。                                                         |
 | `TG_USER_ID`         | `123456789`                        | **(可选)** 接收 Telegram 消息的用户/群组 ID。                                                                                                              |
 | `TG_API_HOST`        | `https://api.telegram.org`        | **(可选)** Telegram API 地址（默认官方，自建代理时修改）。                                                                                                  |
@@ -580,7 +580,7 @@ This is the most critical step. Navigate to your forked repository, go to `Setti
 | `SMTP_USERNAME`           | `user@163.com`                  | **(Optional)** SMTP login account (sender). Falls back to `EMAIL_USERNAME`; set explicitly when using Cloud Mail mode.                                                   |
 | `SMTP_PASSWORD`           | `smtp-auth-code`                 | **(Optional)** SMTP password/app-password matching `SMTP_USERNAME`. Same fallback rule as above.                                                                           |
 | `SMTP_HOST`               | `smtp.gmail.com`                | **(Optional)** Manually specify SMTP server. Infers from IMAP if not provided.                                                                                          |
-| `SMTP_PORT`               | `587`                           | **(Optional)** Manually specify SMTP port. Defaults to 587.                                                                                                             |
+| `SMTP_PORT`               | `465`                           | **(Optional)** SMTP port. Defaults to 465 (implicit SSL, uses `SMTP_SSL`); if 587 is given, STARTTLS is used instead.                                                 |
 | `TG_BOT_TOKEN`            | `123456:ABC-DEF...`             | **(Optional)** Telegram Bot Token. When set, the run report is also pushed to Telegram (see "Telegram notifications" below).                                           |
 | `TG_USER_ID`              | `123456789`                     | **(Optional)** Telegram user/group ID to receive the message.                                                                                                         |
 | `TG_API_HOST`             | `https://api.telegram.org`      | **(Optional)** Telegram API host (default official; change for self-hosted proxies).                                                                                     |

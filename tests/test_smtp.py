@@ -44,7 +44,7 @@ class TestSendStatusEmail:
             mock_smtp.assert_not_called()
         assert any("无法推断 SMTP 服务器地址" in msg for msg in bot.log_messages)
 
-    def test_sends_successfully(self):
+    def test_sends_successfully_via_smtp_ssl_465(self):
         bot = er.RenewalBot()
         bot.log("登录成功")
         with patch.object(er, "NOTIFICATION_EMAIL", "to@example.com"), patch.object(
@@ -52,17 +52,40 @@ class TestSendStatusEmail:
         ), patch.object(er, "SMTP_PASSWORD", "pw"), patch.object(
             er, "SMTP_HOST", "smtp.example.com"
         ), patch.object(er, "SMTP_PORT", 465), patch.object(
-            er.smtplib, "SMTP", return_value=self._mock_smtp()
-        ) as mock_smtp:
+            er.smtplib, "SMTP_SSL", return_value=self._mock_smtp()
+        ) as mock_ssl, patch.object(er.smtplib, "SMTP") as mock_smtp:
             bot.send_status_email("成功")
-        mock_smtp.assert_called_once_with("smtp.example.com", 465, timeout=er.HTTP_TIMEOUT_SECONDS)
-        server = mock_smtp.return_value
-        server.starttls.assert_called_once()
+        mock_ssl.assert_called_once_with(
+            "smtp.example.com", 465, timeout=er.HTTP_TIMEOUT_SECONDS
+        )
+        mock_smtp.assert_not_called()
+        server = mock_ssl.return_value
+        server.starttls.assert_not_called()
         server.login.assert_called_once_with("smtp@example.com", "pw")
         server.sendmail.assert_called_once()
         args, kwargs = server.sendmail.call_args
         assert args[0] == "smtp@example.com"
         assert args[1] == ["to@example.com"]
+        assert any("已成功发送" in msg for msg in bot.log_messages)
+
+    def test_sends_successfully_via_starttls_587(self):
+        bot = er.RenewalBot()
+        with patch.object(er, "NOTIFICATION_EMAIL", "to@example.com"), patch.object(
+            er, "SMTP_USERNAME", "smtp@example.com"
+        ), patch.object(er, "SMTP_PASSWORD", "pw"), patch.object(
+            er, "SMTP_HOST", "smtp.example.com"
+        ), patch.object(er, "SMTP_PORT", 587), patch.object(
+            er.smtplib, "SMTP", return_value=self._mock_smtp()
+        ) as mock_smtp, patch.object(er.smtplib, "SMTP_SSL") as mock_ssl:
+            bot.send_status_email("成功")
+        mock_smtp.assert_called_once_with(
+            "smtp.example.com", 587, timeout=er.HTTP_TIMEOUT_SECONDS
+        )
+        mock_ssl.assert_not_called()
+        server = mock_smtp.return_value
+        server.starttls.assert_called_once()
+        server.login.assert_called_once_with("smtp@example.com", "pw")
+        server.sendmail.assert_called_once()
         assert any("已成功发送" in msg for msg in bot.log_messages)
 
     def test_uses_separate_smtp_credentials(self):
