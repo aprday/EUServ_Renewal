@@ -154,7 +154,7 @@ SMTP_HOST = os.getenv("SMTP_HOST") or (
     EMAIL_HOST.replace("imap", "smtp") if EMAIL_HOST else ""
 )
 _smtp_port_env = os.getenv("SMTP_PORT", "")
-SMTP_PORT = int(_smtp_port_env) if _smtp_port_env and _smtp_port_env.strip() else 587
+SMTP_PORT = int(_smtp_port_env) if _smtp_port_env and _smtp_port_env.strip() else 465
 
 # GitHub Actions 输出文件
 GITHUB_OUTPUT = os.getenv("GITHUB_OUTPUT", "")
