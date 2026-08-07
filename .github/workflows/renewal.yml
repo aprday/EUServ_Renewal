@@ -22,12 +22,15 @@ jobs:
           path: venv
           key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
       - name: Create venv and Install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
-          python -m venv venv
+          if [ ! -d venv/bin ]; then
+            python -m venv venv
+          fi
           source venv/bin/activate
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if ! python -c "import requests, bs4" 2>/dev/null; then
+            pip install -r requirements.txt
+          fi
       - name: Run renewal script with retry
         id: renewal
         env:
