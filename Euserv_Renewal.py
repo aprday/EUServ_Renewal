@@ -1159,7 +1159,8 @@ class RenewalBot:
                 self._log_non_renewable_servers(all_servers)
                 self.log("ℹ️ 未到续约日期，跳过执行。", LogLevel.INFO)
                 status = "跳过"
-                return EXIT_SKIPPED
+                exit_code = EXIT_SKIPPED
+                self._safe_refresh_session()
             else:
                 if not self._process_server_renewals(servers_to_renew):
                     status = "失败"
