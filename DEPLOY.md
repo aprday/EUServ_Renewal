@@ -46,7 +46,7 @@ Euserv_Renewal.py (RenewalBot)
 - **谁触发**：GitHub Actions 定时（cron）或手动触发。
 - **登录**：模拟浏览器请求 `support.euserv.com`。遇到图片验证码用本地 `ddddocr` 与 TrueCaptcha API **并行识别**；遇到 2FA 用你保存的 Setup key 本地生成动态码。
 - **续约确认**：EUserv 会向你的邮箱发送一封主题为 `EUserv - PIN for the Confirmation of a Security Check` 的邮件，脚本从邮箱读出其中的 6 位 PIN 完成续约。
-- **退出码**：`0` 成功 / `1` 失败（workflow 会 30 分钟后重试，最多 3 次）/ `2` 未到期（跳过）。
+- **退出码**：`0` 成功 / `1` 失败（workflow 会 60 秒后重试，最多 3 次）/ `2` 未到期（跳过）。
 - **动态调度**：每次完成后算出最早的可续约日期，用 GitHub PAT 自动改写 workflow 里的 cron，做到**只在需要续约的那天运行**。
 
 ---
@@ -330,7 +330,7 @@ EMAIL_PASSWORD     = imap_app_pw,cloud_mpw
 - 默认 workflow `renewal.yml` 带初始 cron（如 `0 0 22 8 *`）用于首次测试。
 - 每次运行后，脚本计算最早续约日期，写入 `GITHUB_OUTPUT` 的 `next_cron`。
 - 后续 step 用 `PAT_WITH_WORKFLOW_SCOPE` 改写 `renewal.yml` 的 cron 并 push，实现**下次只在那天运行**。
-- 失败时：workflow 外层 shell 会每 30 分钟重试，最多 3 次；全部失败则本次标记失败，下一 cron 仍挂着，可人工再触发。
+- 失败时：workflow 外层 shell 会每 60 秒重试，最多 3 次；全部失败则本次标记失败，下一 cron 仍挂着，可人工再触发。
 
 ---
 

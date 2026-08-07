@@ -52,7 +52,7 @@ jobs:
           source venv/bin/activate
 
           MAX_RETRIES=3
-          RETRY_DELAY=1800  # 30分钟 (秒)
+          RETRY_DELAY=60  # 60秒快速重试，避免失败后长时间挂起
 
           for i in $(seq 1 $MAX_RETRIES); do
             echo "========================================="
@@ -78,7 +78,7 @@ jobs:
               *)
                 echo "❌ 续约失败 (退出码: $EXIT_CODE)"
                 if [ $i -lt $MAX_RETRIES ]; then
-                  echo "⏳ 等待 30 分钟后重试..."
+                  echo "⏳ 等待 60 秒后重试..."
                   sleep $RETRY_DELAY
                 fi
                 ;;
