@@ -55,7 +55,7 @@ CLOUD_MAIL_API_URL = os.getenv("CLOUD_MAIL_API_URL", "")
 # Telegram Bot 推送配置 (可选)
 TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 TG_USER_ID = os.getenv("TG_USER_ID", "")
-TG_API_HOST = os.getenv("TG_API_HOST", "https://api.telegram.org")
+TG_API_HOST = (os.getenv("TG_API_HOST") or "").strip() or "https://api.telegram.org"
 
 # 多账号配置 (可选)：账号级变量（EUSERV_USERNAME/PASSWORD/2FA 等）同一环境变量内用
 # 英文逗号分隔多个值，按位置一一对应。邮箱服务级变量（CLOUD_MAIL_API_URL/EMAIL_HOST）
