@@ -1195,6 +1195,41 @@ class RenewalBot:
         return exit_code
 
 
+def _display_width(text: str) -> int:
+    """估算终端显示宽度：全角/中日韩字符按 2 列计。"""
+    width = 0
+    for ch in text:
+        cp = ord(ch)
+        # CJK 统一表意文字区、片假名、平假名、全角标点等
+        if (
+            0x1100 <= cp <= 0x115F
+            or 0x2E80 <= cp <= 0xA4CF
+            or 0xAC00 <= cp <= 0xD7A3
+            or 0xF900 <= cp <= 0xFAFF
+            or 0xFE10 <= cp <= 0xFE19
+            or 0xFE30 <= cp <= 0xFE4F
+            or 0xFF00 <= cp <= 0xFF60
+        ):
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def _center_title(text: str, width: int = 52) -> str:
+    """按终端显示宽度把标题居中（用全角空格填充两侧）。"""
+    text_width = _display_width(text)
+    total_pad = max(0, width - text_width)
+    left = total_pad // 2
+    right = total_pad - left
+    # 每侧用一个全角空格占 2 列，余量用半角空格
+    left_fw, left_hw = divmod(left, 2)
+    right_fw, right_hw = divmod(right, 2)
+    return (
+        "\u3000" * left_fw + " " * left_hw + text + " " * right_hw + "\u3000" * right_fw
+    )
+
+
 def _run_single() -> int:
     """单账号运行（未配置 EUSERV_ACCOUNTS 时的向后兼容路径）。"""
     bot = RenewalBot()
@@ -1214,8 +1249,8 @@ def _run_multi(accounts: list[dict]) -> int:
 
     # 汇总日志到报告机器人
     report_bot = RenewalBot()
-    report_bot.log(f"===== 多账号运行报告（共 {len(accounts)} 个账号）=====")
-    report_bot.log(f"{'账号':<24} ｜ {'状态':<6} ｜ 结果")
+    report_bot.log(_center_title(f"===== 多账号运行报告（共 {len(accounts)} 个账号）====="))
+    report_bot.log(f"{'账号':<26} ｜ {'状态':<6} ｜ 结果")
     for bot, code in results:
         report_bot.log(
             f"{bot.account_name:<24} ｜ {code:<6} ｜ "
@@ -1225,8 +1260,13 @@ def _run_multi(accounts: list[dict]) -> int:
     # 汇总日志：按账号分段
     for bot, code in results:
         report_bot.log(f"\n---------- 账号【{bot.account_name}】日志 ----------")
-        for idx, line in enumerate(bot.log_messages, start=1):
-            report_bot.log(f"{idx}. {line}")
+        num = 0
+        for line in bot.log_messages:
+            if not line.strip():
+                report_bot.log("")
+                continue
+            num += 1
+            report_bot.log(f"{num}. {line}")
 
     # 调度：取所有账号中最早的可续约日期写入 GITHUB_OUTPUT 一次
     earliest: str | None = None
