@@ -97,7 +97,10 @@ class TestSendStatusEmail:
             er, "SMTP_USERNAME", "user@163.com"
         ), patch.object(er, "SMTP_PASSWORD", "smtp_auth_code"), patch.object(
             er, "SMTP_HOST", "smtp.163.com"
-        ), patch.object(er.smtplib, "SMTP", return_value=self._mock_smtp()) as mock_smtp:
+        ), patch.object(er, "SMTP_PORT", 465), patch.object(
+            er.smtplib, "SMTP_SSL", return_value=self._mock_smtp()
+        ) as mock_ssl, patch.object(er.smtplib, "SMTP") as mock_smtp:
             bot.send_status_email("成功")
-        server = mock_smtp.return_value
+        server = mock_ssl.return_value
         server.login.assert_called_once_with("user@163.com", "smtp_auth_code")
+        mock_smtp.assert_not_called()
