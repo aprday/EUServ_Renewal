@@ -131,7 +131,7 @@ USER_AGENT = (
 )
 
 # 时间配置 (秒)
-LOGIN_MAX_RETRY_COUNT = 3
+LOGIN_MAX_RETRY_COUNT = 5
 PIN_WAIT_SECONDS = 30
 HTTP_TIMEOUT_SECONDS = 30
 RETRY_DELAY_SECONDS = 5
@@ -423,7 +423,12 @@ class RenewalBot:
             resp.raise_for_status()
             self.log("Telegram 通知已成功发送！", LogLevel.CELEBRATION)
         except requests.RequestException as e:
-            self.log(f"Telegram 推送失败: {e}", LogLevel.ERROR)
+            detail = getattr(e.response, "text", "")[:300] if getattr(e, "response", None) else ""
+            self.log(
+                f"Telegram 推送失败: {e}"
+                + (f" | 响应: {detail}" if detail else ""),
+                LogLevel.ERROR,
+            )
 
     # ==================== OCR 相关 ====================
 
