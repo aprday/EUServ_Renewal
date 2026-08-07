@@ -415,7 +415,7 @@ class RenewalBot:
             f"——————————————\n"
             f"<pre>{_html_escape(logs)}</pre>\n"
             f"——————————————\n"
-            f"🔗 <a href='https://github.com/Michaol/euserv-renewal-bot'>euserv-renewal-bot</a>"
+            f"🔗 <a href='https://github.com/wimdaw/EUServ_Renewal'>EUServ_Renewal</a>"
         )
         if len(self.log_messages) > 100:
             message += "\n\n<i>(日志过长已截断)</i>"
@@ -1161,7 +1161,7 @@ class RenewalBot:
         status = "成功"
         exit_code = EXIT_SUCCESS
         try:
-            self.log(f"--- 开始 Euserv 自动续期任务 ({self.account_name}) ---")
+            self.log(f"--- 开始 EUServ 续期任务 ({self.account_name}) ---")
 
             # 预加载 OCR 模型，减少首次验证码识别延迟
             self.prewarm_ocr()

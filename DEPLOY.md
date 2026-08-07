@@ -319,7 +319,7 @@ EMAIL_PASSWORD     = imap_app_pw,cloud_mpw
    - `发现 N 台服务器合同`
    - 若已到期续约，出现 `成功获取续期Token`（说明 PIN 已被读到）
    - 结束输出 `📅 下次续约日期`
-5. 查看 `NOTIFICATION_EMAIL` 或 Telegram：应收到一条 `Euserv 自动续约运行报告` 的通知。
+5. 查看 `NOTIFICATION_EMAIL` 或 Telegram：应收到一条 `EUServ 续期脚本运行报告` 的通知。
 
 若一切正常，之后 cron（动态调度）会在下次续约窗口运行，无需再手动触发。
 
