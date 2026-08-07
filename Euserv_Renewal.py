@@ -421,7 +421,14 @@ class RenewalBot:
                 timeout=HTTP_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
-            self.log("Telegram 通知已成功发送！", LogLevel.CELEBRATION)
+            body = resp.json().get("result", {})
+            chat = body.get("chat", {})
+            self.log(
+                "Telegram 通知已成功发送！"
+                f" (chat_id={chat.get('id')}, username=@{chat.get('username') or '-'}, "
+                f"name={chat.get('first_name') or chat.get('title') or '-'})",
+                LogLevel.CELEBRATION,
+            )
         except requests.RequestException as e:
             detail = getattr(e.response, "text", "")[:300] if getattr(e, "response", None) else ""
             self.log(
