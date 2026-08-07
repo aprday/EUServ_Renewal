@@ -447,8 +447,9 @@ class RenewalBot:
     def _solve_captcha_local(self, image_bytes: bytes) -> str | None:
         """使用本地 ddddocr 识别验证码"""
         ocr = self._get_ocr()
-        # 限制字符集为数字和运算符，提高数学验证码识别率
-        ocr.set_ranges("0123456789+-x/=")
+        # Euserv 验证码可能是数学算式（如 3+x=）也可能是混合字母数字文本，
+        # 放宽字符集，避免把字母验证码读成乱码。
+        ocr.set_ranges("0123456789+-x/=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
         captcha_text = ocr.classification(image_bytes)
 
         if not captcha_text:
@@ -514,45 +515,21 @@ class RenewalBot:
             self.log(f"本地 OCR 识别成功: {result}")
             return result
 
-        # 并行竞速：两个通道同时跑，取先成功者
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # API 优先：TrueCaptcha 对混合字母数字验证码准确率更高（本地 ddddocr
+        # 毫秒级返回抢跑，但易把字母读错）。仅当 API 识别失败时才回退本地。
+        try:
+            api_result = self._solve_captcha_api(image_bytes)
+        except CaptchaError:
+            api_result = None
+        if api_result:
+            self.log(f"TrueCaptcha API 识别成功: {api_result}")
+            return api_result
 
-        def _try_local() -> str:
-            return self._solve_captcha_local(image_bytes)
-
-        def _try_api() -> str:
-            return self._solve_captcha_api(image_bytes)
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = {
-                executor.submit(fn): name
-                for fn, name in [(_try_local, "本地 OCR"), (_try_api, "TrueCaptcha API")]
-            }
-            try:
-                for future in as_completed(futures, timeout=API_TIMEOUT_SECONDS + 5):
-                    name = futures[future]
-                    try:
-                        result = future.result()
-                    except CaptchaError:
-                        self.log(f"{name} 识别失败")
-                        continue
-                    except Exception as e:
-                        self.log(f"{name} 识别报错: {e}")
-                        continue
-                    if result:
-                        self.log(f"{name} 识别成功: {result}")
-                        return result
-            except TimeoutError:
-                self.log("验证码双通道识别超时，等待剩余通道...")
-                for future in futures:
-                    try:
-                        result = future.result(timeout=5)
-                    except Exception:
-                        continue
-                    if result:
-                        self.log(f"超时后 {futures[future]} 识别成功: {result}")
-                        return result
-
+        self.log("TrueCaptcha API 识别失败，回退本地 OCR...")
+        result = self._solve_captcha_local(image_bytes)
+        if result:
+            self.log(f"本地 OCR 识别成功: {result}")
+            return result
         raise CaptchaError("本地 OCR 与 TrueCaptcha API 均无法识别验证码")
 
     # ==================== 验证码和2FA处理 ====================
