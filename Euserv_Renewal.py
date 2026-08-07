@@ -21,6 +21,7 @@ import hmac
 import struct
 import ast
 import operator
+from html import escape as _html_escape
 
 
 # 自定义异常类
@@ -351,8 +352,8 @@ class RenewalBot:
         self.log("正在准备发送状态通知邮件...")
         sender = SMTP_USERNAME
         recipient = NOTIFICATION_EMAIL
-        subject = f"Euserv 续约脚本运行报告 - {subject_status}"
-        body = "Euserv 自动续约脚本本次运行的详细日志如下：\n\n" + "\n".join(
+        subject = f"EUServ 续期脚本运行报告 — {subject_status}"
+        body = "EUServ 自动续约脚本本次运行的详细日志如下：\n\n" + "\n".join(
             self.log_messages
         )
         msg = MIMEText(body, "plain", "utf-8")
@@ -397,14 +398,25 @@ class RenewalBot:
             return
         self.log("正在准备发送 Telegram 通知...")
 
+        status_icon = {
+            "成功": "✅",
+            "失败": "❌",
+            "跳过": "⏭️",
+            "配置错误": "⚠️",
+            "异常": "❌",
+        }.get(subject_status, "ℹ️")
+
         logs = "\n".join(self.log_messages)
         # Telegram 单条消息长度限制约 4096 字符，超出时截断。
         logs = logs[:3900]
         message = (
-            "<b>Euserv 自动续约运行报告 - {status}</b>\n\n"
-            "{logs}\n\n"
-            "<b>项目:</b> <a href='https://github.com/Michaol/euserv-renewal-bot'>euserv-renewal-bot</a>"
-        ).format(status=subject_status, logs=logs)
+            f"<b>📋 EUServ 续期脚本运行报告 — {subject_status}</b>\n"
+            f"状态：{status_icon} <b>{subject_status}</b>\n"
+            f"——————————————\n"
+            f"<pre>{_html_escape(logs)}</pre>\n"
+            f"——————————————\n"
+            f"🔗 <a href='https://github.com/Michaol/euserv-renewal-bot'>euserv-renewal-bot</a>"
+        )
         if len(self.log_messages) > 100:
             message += "\n\n<i>(日志过长已截断)</i>"
 

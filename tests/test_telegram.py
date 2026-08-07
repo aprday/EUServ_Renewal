@@ -34,7 +34,9 @@ class TestTelegramNotification:
         mock_post.assert_called_once()
         kwargs = mock_post.call_args.kwargs
         assert kwargs["data"]["chat_id"] == "456"
-        assert kwargs["data"]["text"].startswith("<b>Euserv 自动续约运行报告 - 成功</b>")
+        assert kwargs["data"]["text"].startswith(
+            "<b>📋 EUServ 续期脚本运行报告 — 成功</b>"
+        )
         assert "登录成功" in kwargs["data"]["text"]
         assert kwargs["data"]["parse_mode"] == "HTML"
 
