@@ -69,16 +69,21 @@ def _split_multi(value: str) -> list[str]:
 
 
 def _at(values: list[str], index: int) -> str:
-    """安全取值：越界返回空字符串。"""
+    """取值：变量只有一个值（未用逗号分隔）时广播给所有账号；多个值时按位置对应，越界返回空。"""
+    if len(values) == 1:
+        return values[0]
     return values[index] if index < len(values) else ""
 
 
 def parse_accounts() -> list[dict]:
     """基于逗号分隔的环境变量构建账号列表。
 
-    规则：EUSERV_USERNAME 含逗号即视为多账号模式，其余变量（EUSERV_PASSWORD、
-    EUSERV_2FA、EMAIL_USERNAME、EMAIL_PASSWORD、CLOUD_MAIL_API_URL、EMAIL_HOST）
-    同样用逗号分隔，按索引与账号一一对应；某项数量不足时补空。
+    规则：EUSERV_USERNAME 含逗号即视为多账号模式。
+    其余变量（EUSERV_PASSWORD、EUSERV_2FA、EMAIL_USERNAME、EMAIL_PASSWORD、
+    CLOUD_MAIL_API_URL、EMAIL_HOST）支持两种写法：
+      - 只有一个值（不加逗号）：所有账号共享该值（例如多个账号共用同一个
+        Cloud Mail 实例或同一个 IMAP 服务，只需填一次）；
+      - 多个值（逗号分隔）：按位置与账号一一对应，数量不足时补空。
 
     单账号（不含逗号）时返回空列表，走向后兼容的模块级常量路径。
 

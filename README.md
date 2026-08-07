@@ -299,15 +299,16 @@
 | `EUSERV_USERNAME` | `user1@example.com` | `user1@example.com,user2@example.com` |
 | `EUSERV_PASSWORD` | `pw1` | `pw1,pw2` |
 | `EUSERV_2FA` | `KEY1` | `KEY1,KEY2` |
-| `EMAIL_USERNAME` | `admin1@mail.example` | `admin1@mail.example,admin2@mail.example` |
-| `EMAIL_PASSWORD` | `mpw1` | `mpw1,mpw2` |
-| `CLOUD_MAIL_API_URL` | `https://mail1.example` | `https://mail1.example,https://mail2.example` |
-| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com,imap.qq.com` |
+| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example,admin2@mail.example` |
+| `EMAIL_PASSWORD` | `mpw` | `mpw,mpw2` |
+| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example`（共用同一实例时只填一次）|
+| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com`（共用时只填一次）|
 
 规则：
 
 - **触发条件**：`EUSERV_USERNAME` 含逗号即进入多账号模式；不含逗号则完全按单账号运行，旧配置不受影响。
-- **按位置对应**：每个变量的第 N 个值属于第 N 个账号；某变量数量不足时缺失部分按空处理（例如某个账号未开 2FA，对应位置留空）。
+- **单值自动广播**：`EMAIL_USERNAME`、`EMAIL_PASSWORD`、`CLOUD_MAIL_API_URL`、`EMAIL_HOST`、`EUSERV_2FA` 等只要**只写一个值**，所有账号就共用这一个值——多账号共用同一个 Cloud Mail 实例或同一个 IMAP 服务时，这些只需填一次，不用重复写。
+- **多值按位置对应**：某变量若给了逗号分隔的多个值，则按位置与账号一一对应；低于账号数时的空缺位置按空处理（例如某账号没有独立的 Cloud Mail 管理员，对应位置留空）。
 - **邮箱方案可混用**：账号 1 用 Cloud Mail、账号 2 用 IMAP 均可（`CLOUD_MAIL_API_URL` 相应位置留空）。
 - **通知与调度**：所有账号运行结束后**汇总成一份**邮件/Telegram 报告；cron 自动设为所有账号中**最早**的下次续约日期；任一账号失败则整体失败（触发重试）。
 
@@ -604,15 +605,16 @@ To manage **several Euserv accounts** with the same repository, **no new variabl
 | `EUSERV_USERNAME` | `user1@example.com` | `user1@example.com,user2@example.com` |
 | `EUSERV_PASSWORD` | `pw1` | `pw1,pw2` |
 | `EUSERV_2FA` | `KEY1` | `KEY1,KEY2` |
-| `EMAIL_USERNAME` | `admin1@mail.example` | `admin1@mail.example,admin2@mail.example` |
-| `EMAIL_PASSWORD` | `mpw1` | `mpw1,mpw2` |
-| `CLOUD_MAIL_API_URL` | `https://mail1.example` | `https://mail1.example,https://mail2.example` |
-| `EMAIL_HOST` (IMAP mode) | `imap.gmail.com` | `imap.gmail.com,imap.qq.com` |
+| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example,admin2@mail.example` |
+| `EMAIL_PASSWORD` | `mpw` | `mpw,mpw2` |
+| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example` (single value is shared by all accounts) |
+| `EMAIL_HOST` (IMAP mode) | `imap.gmail.com` | `imap.gmail.com` (shared when only one value is given) |
 
 Rules:
 
 - **Trigger**: as soon as `EUSERV_USERNAME` contains a comma, multi-account mode is enabled; without a comma the script behaves exactly as before (single account).
-- **Position-based:** the N-th value of each variable belongs to the N-th account. Missing values are treated as empty (e.g., leave a blank slot for an account without 2FA).
+- **Single value = shared**: if a variable (`EMAIL_USERNAME`, `EMAIL_PASSWORD`, `CLOUD_MAIL_API_URL`, `EMAIL_HOST`, `EUSERV_2FA`, ...) contains **only one value**, every account reuses it — e.g., several accounts on the same Cloud Mail instance or the same IMAP server only need to fill it once.
+- **Multiple values = position-based**: when a variable has several comma-separated values, the N-th value belongs to the N-th account; missing positions stay empty (e.g., an account without a dedicated Cloud Mail admin).
 - **Mixed mailboxes:** account 1 can use Cloud Mail while account 2 uses IMAP (leave the matching `CLOUD_MAIL_API_URL` slot empty).
 - **Reporting & scheduling:** after all accounts finish, the email/Telegram report is **sent once as a summary**; the cron is set to the **earliest** next-renewal date across all accounts; if any account fails the whole run fails (triggering the retry).
 

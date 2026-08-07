@@ -45,14 +45,36 @@ class TestParseAccounts:
         assert accounts[1]["email_username"] == "admin2@mail.example"
         assert accounts[1]["cloud_mail_api_url"] == "https://mail2.example"
 
-    def test_missing_fields_fill_empty(self):
-        """数量不足的变量补空，不报错。"""
+    def test_single_value_broadcasts_to_all_accounts(self):
+        """单值（未用逗号）自动广播：邮箱/IMAP/管理员等只有一份时，所有账号共用。"""
         with patch.object(
             er, "EUSERV_USERNAME", "user1@example.com,user2@example.com"
         ), patch.object(er, "EUSERV_PASSWORD", "pw1"), patch.object(
+            er, "EUSERV_2FA", "KEY1"
+        ), patch.object(er, "EMAIL_USERNAME", "admin@mail.example"), patch.object(
+            er, "EMAIL_PASSWORD", "mpw"
+        ), patch.object(
+            er, "CLOUD_MAIL_API_URL", "https://mail.example"
+        ), patch.object(er, "EMAIL_HOST", "imap.gmail.com"):
+            accounts = er.parse_accounts()
+        # 广播：两个账号拿到相同的单值
+        assert accounts[0]["password"] == "pw1"
+        assert accounts[1]["password"] == "pw1"
+        assert accounts[0]["email_username"] == "admin@mail.example"
+        assert accounts[1]["email_username"] == "admin@mail.example"
+        assert accounts[0]["cloud_mail_api_url"] == "https://mail.example"
+        assert accounts[1]["cloud_mail_api_url"] == "https://mail.example"
+        assert accounts[1]["email_host"] == "imap.gmail.com"
+
+    def test_empty_values_stay_empty_when_multiple_specified(self):
+        """明确用逗号给了不止一个值时按位置对应，空缺补空。"""
+        with patch.object(
+            er, "EUSERV_USERNAME", "user1@example.com,user2@example.com"
+        ), patch.object(er, "EUSERV_PASSWORD", "pw1,"), patch.object(
             er, "EUSERV_2FA", ""
         ):
             accounts = er.parse_accounts()
+        assert accounts[0]["password"] == "pw1"
         assert accounts[1]["password"] == ""
         assert accounts[0]["two_fa"] == ""
         assert accounts[1]["two_fa"] == ""

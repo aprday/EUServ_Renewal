@@ -201,15 +201,16 @@ curl -X POST https://你部署的邮件根地址/api/public/emailList \
 | `EUSERV_USERNAME` | `user1@example.com` | `user1@example.com,user2@example.com` |
 | `EUSERV_PASSWORD` | `pw1` | `pw1,pw2` |
 | `EUSERV_2FA` | `KEY1` | `KEY1,KEY2` |
-| `EMAIL_USERNAME` | `admin1@mail.example` | `admin1@mail.example,admin2@mail.example` |
-| `EMAIL_PASSWORD` | `mpw1` | `mpw1,mpw2` |
-| `CLOUD_MAIL_API_URL` | `https://mail1.example` | `https://mail1.example,https://mail2.example` |
-| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com,imap.qq.com` |
+| `EMAIL_USERNAME` | `admin@mail.example` | `admin@mail.example,admin2@mail.example` |
+| `EMAIL_PASSWORD` | `mpw` | `mpw,mpw2` |
+| `CLOUD_MAIL_API_URL` | `https://mail.example` | `https://mail.example`（共用同一实例时只填一次）|
+| `EMAIL_HOST`（IMAP 模式） | `imap.gmail.com` | `imap.gmail.com`（共用时只填一次）|
 
 规则：
 
 - **触发条件**：只要 `EUSERV_USERNAME` 含逗号，即进入多账号模式；不含逗号则完全按单账号运行，旧配置不受影响。
-- **按位置对应**：每个变量的第 N 个值属于第 N 个账号。某变量值比账号数少时，缺失部分按空处理（例如某个账号没开 2FA，对应位置留空即可）。
+- **单值自动广播**：`EMAIL_USERNAME`、`EMAIL_PASSWORD`、`CLOUD_MAIL_API_URL`、`EMAIL_HOST`、`EUSERV_2FA` 等**只写一个值**时，所有账号共用这一个值——多个账号共用同一个 Cloud Mail 实例或同一个 IMAP 服务时，这些只需填一次，不用重复写。
+- **多值按位置对应**：某变量给了逗号分隔的多个值时，按位置与账号一一对应；空缺位置按空处理（例如某账号没有独立的 Cloud Mail 管理员，对应位置留空）。
 - **邮箱方案可混用**：账号 1 用 Cloud Mail、账号 2 用 IMAP 也没问题（`CLOUD_MAIL_API_URL` 相应位置留空，另一个填）。
 - **通知与调度**：所有账号运行结束后**汇总成一份**邮件/Telegram 报告；cron 自动设为所有账号中**最早**的下次续约日期。
 - **退出码**：任一账号失败则整体失败（触发 workflow 重试），全部跳过则整体跳过。
