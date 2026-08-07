@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.claude/
+
+# Logs & caches
+log_cache.txt
+run_log.txt
+
+# Debug artifacts
+captcha_failed.png
+debug_page.html
+
+# Virtual environment
+venv/
+.ace-tool/
+.venv/
+
+# macOS
+.DS_Store
+*.local
+
+# Local test config (never commit credentials)
+*.env
+.env.*
+
+# Upstream reference project (not part of this repo)
+Auto/
