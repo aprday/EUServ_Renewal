@@ -359,20 +359,31 @@ class RenewalBot:
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = recipient
-        try:
-            if SMTP_PORT == 465:
-                server = smtplib.SMTP_SSL(
-                    SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                if SMTP_PORT == 465:
+                    server = smtplib.SMTP_SSL(
+                        SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS
+                    )
+                else:
+                    server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS)
+                    server.starttls()
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                server.sendmail(SMTP_USERNAME, [recipient], msg.as_string())
+                server.quit()
+                self.log("状态通知邮件已成功发送！", LogLevel.CELEBRATION)
+                return
+            except smtplib.SMTPException as e:
+                last_error = e
+                self.log(
+                    f"发送邮件失败 (尝试 {attempt}/3): {e} "
+                    f"(host={SMTP_HOST}, port={SMTP_PORT})",
+                    LogLevel.ERROR,
                 )
-            else:
-                server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=HTTP_TIMEOUT_SECONDS)
-                server.starttls()
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.sendmail(SMTP_USERNAME, [recipient], msg.as_string())
-            server.quit()
-            self.log("状态通知邮件已成功发送！", LogLevel.CELEBRATION)
-        except smtplib.SMTPException as e:
-            self.log(f"发送邮件失败: {e}", LogLevel.ERROR)
+                if attempt < 3:
+                    time.sleep(10)
+        self.log(f"邮件通知失败，多次尝试后仍未成功: {last_error}", LogLevel.ERROR)
 
     # ==================== Telegram 推送 ====================
 
