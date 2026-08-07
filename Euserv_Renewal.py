@@ -353,9 +353,7 @@ class RenewalBot:
         sender = SMTP_USERNAME
         recipient = NOTIFICATION_EMAIL
         subject = f"EUServ 续期脚本运行报告 — {subject_status}"
-        body = "EUServ 自动续约脚本本次运行的详细日志如下：\n\n" + "\n".join(
-            self.log_messages
-        )
+        body = "本次运行详细日志如下：\n\n" + "\n".join(self.log_messages)
         msg = MIMEText(body, "plain", "utf-8")
         msg["Subject"] = subject
         msg["From"] = sender
@@ -398,23 +396,13 @@ class RenewalBot:
             return
         self.log("正在准备发送 Telegram 通知...")
 
-        status_icon = {
-            "成功": "✅",
-            "失败": "❌",
-            "跳过": "⏭️",
-            "配置错误": "⚠️",
-            "异常": "❌",
-        }.get(subject_status, "ℹ️")
-
         logs = "\n".join(self.log_messages)
         # Telegram 单条消息长度限制约 4096 字符，超出时截断。
         logs = logs[:3900]
         message = (
-            f"<b>📋 EUServ 续期脚本运行报告 — {subject_status}</b>\n"
-            f"状态：{status_icon} <b>{subject_status}</b>\n"
-            f"——————————————\n"
+            f"<b>📋 EUServ 续期脚本运行报告 — {subject_status}</b>\n\n"
+            f"本次运行详细日志如下：\n"
             f"<pre>{_html_escape(logs)}</pre>\n"
-            f"——————————————\n"
             f"🔗 <a href='https://github.com/wimdaw/EUServ_Renewal'>EUServ_Renewal</a>"
         )
         if len(self.log_messages) > 100:
@@ -1226,16 +1214,19 @@ def _run_multi(accounts: list[dict]) -> int:
 
     # 汇总日志到报告机器人
     report_bot = RenewalBot()
-    report_bot.log(f"===== 多账号运行报告 (共 {len(accounts)} 个账号) =====")
-    report_bot.log("账号  |  状态  |  结果")
+    report_bot.log(f"===== 多账号运行报告（共 {len(accounts)} 个账号）=====")
+    report_bot.log(f"{'账号':<24} ｜ {'状态':<6} ｜ 结果")
     for bot, code in results:
-        report_bot.log(f"{bot.account_name}  |  {code}  |  "
-                       f"{'成功' if code == EXIT_SUCCESS else ('跳过' if code == EXIT_SKIPPED else '失败')}")
+        report_bot.log(
+            f"{bot.account_name:<24} ｜ {code:<6} ｜ "
+            f"{'成功' if code == EXIT_SUCCESS else ('跳过' if code == EXIT_SKIPPED else '失败')}"
+        )
 
     # 汇总日志：按账号分段
     for bot, code in results:
-        report_bot.log(f"\n---------- 账号 {bot.account_name} 日志 ----------")
-        report_bot.log_messages.extend(bot.log_messages)
+        report_bot.log(f"\n---------- 账号【{bot.account_name}】日志 ----------")
+        for idx, line in enumerate(bot.log_messages, start=1):
+            report_bot.log(f"{idx}. {line}")
 
     # 调度：取所有账号中最早的可续约日期写入 GITHUB_OUTPUT 一次
     earliest: str | None = None
