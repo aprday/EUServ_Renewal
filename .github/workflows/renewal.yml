@@ -36,6 +36,7 @@ jobs:
           EUSERV_2FA: ${{ secrets.EUSERV_2FA }}
           CAPTCHA_USERID: ${{ secrets.CAPTCHA_USERID }}
           CAPTCHA_APIKEY: ${{ secrets.CAPTCHA_APIKEY }}
+          CLOUD_MAIL_API_URL: ${{ secrets.CLOUD_MAIL_API_URL }}
           EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
           EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
