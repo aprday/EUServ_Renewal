@@ -57,7 +57,9 @@ TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 TG_USER_ID = os.getenv("TG_USER_ID", "")
 TG_API_HOST = os.getenv("TG_API_HOST", "https://api.telegram.org")
 
-# 多账号配置 (可选)：同一环境变量内用英文逗号分隔多个值，按位置一一对应。
+# 多账号配置 (可选)：账号级变量（EUSERV_USERNAME/PASSWORD/2FA 等）同一环境变量内用
+# 英文逗号分隔多个值，按位置一一对应。邮箱服务级变量（CLOUD_MAIL_API_URL/EMAIL_HOST）
+# 默认只填一个值，所有账号共用，无需按账号重复。
 # 例如 EUSERV_USERNAME="user1@x.com,user2@y.com"，EUSERV_PASSWORD="pw1,pw2"。
 
 
@@ -79,17 +81,20 @@ def parse_accounts() -> list[dict]:
     """基于逗号分隔的环境变量构建账号列表。
 
     规则：EUSERV_USERNAME 含逗号即视为多账号模式。
-    其余变量（EUSERV_PASSWORD、EUSERV_2FA、EMAIL_USERNAME、EMAIL_PASSWORD、
-    CLOUD_MAIL_API_URL、EMAIL_HOST）支持两种写法：
-      - 只有一个值（不加逗号）：所有账号共享该值（例如多个账号共用同一个
-        Cloud Mail 实例或同一个 IMAP 服务，只需填一次）；
-      - 多个值（逗号分隔）：按位置与账号一一对应，数量不足时补空。
+    变量分为两类：
+      - 账号级（EUSERV_PASSWORD、EUSERV_2FA、EMAIL_USERNAME、EMAIL_PASSWORD）：
+        多账号时可逗号分隔、按位置一一对应；只填一个值则所有账号共用。
+      - 邮箱服务级（CLOUD_MAIL_API_URL、EMAIL_HOST）：是整个邮箱服务的配置，
+        正常情况下只填一个值，所有账号共用同一个 Cloud Mail 实例或同一套
+        IMAP 服务；只有当账号确实各自部署了不同的邮箱服务时才按位置填多个。
 
     单账号（不含逗号）时返回空列表，走向后兼容的模块级常量路径。
 
-    每个账号字典包含独立的 Euserv 凭据与邮箱凭据：
+    每个账号字典包含独立的 Euserv 凭据，以及邮箱凭据：
     name / username / password / two_fa / email_host / email_username /
     email_password / cloud_mail_api_url
+    其中 cloud_mail_api_url、email_host 属于邮箱服务级配置：每个账号字段默认
+    来自同一个共享值（单值广播），只在账号各自使用不同邮箱服务时才按位置不同。
     """
     usernames = _split_multi(EUSERV_USERNAME)
     if not usernames:
