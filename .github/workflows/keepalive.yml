@@ -1,0 +1,37 @@
+# wimdaw/EUServ_Renewal 保活 workflow
+# 作用：定期对 keepalive 分支做空 commit，刷新仓库活跃度，
+#       防止 GitHub 的 60 天无提交规则停用本仓库所有 schedule 定时任务。
+# 触发：schedule 每 45 天一次（60 天规则下足够），也可手动触发。
+# 隔离：只操作 keepalive 分支，不动 main，不影响原 workflow。
+name: Keepalive
+
+on:
+  schedule:
+    - cron: '0 3 15 * *'   # 每月15日凌晨3点（间隔28-31天，远低于60天上限）
+  workflow_dispatch:        # 支持手动触发
+
+permissions:
+  contents: write           # 只需写 keepalive 分支
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false   # 避免并发推空 commit
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout keepalive branch
+        uses: actions/checkout@v4
+        with:
+          ref: keepalive
+          # 用 GITHUB_TOKEN 默认权限即可推送本分支
+
+      - name: Push empty commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "keepalive-bot"
+          git config user.email "keepalive-bot@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keepalive $(date -u +%Y-%m-%d)"
+          git push origin keepalive
