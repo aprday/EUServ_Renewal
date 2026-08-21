@@ -966,6 +966,17 @@ class EUserv:
             logger.error(f"❌ 获取服务器列表失败: {e}", exc_info=True)
             return {}
     
+    @staticmethod
+    def _write_renewed_marker() -> None:
+        """续期成功后写入本月标记，工作流据此停止本月后续运行。"""
+        try:
+            marker = f"renewed_{datetime.now().strftime('%Y-%m')}.txt"
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+            logger.info(f"✅ 已写入本月续期标记: {marker}")
+        except Exception as e:
+            logger.warning(f"⚠️ 写入续期标记失败: {e}")
+
     def renew_server(self, order_id: str) -> bool:
         """续期服务器"""
         logger.info(f"正在续期服务器 {order_id}...")
@@ -1083,6 +1094,7 @@ class EUserv:
                 # 续期成功特征：服务器不再处于"可续期"状态
                 if not can_renew_after:
                     logger.info(f"✅ 服务器 {order_id} 续期验证通过（新可续期日期: {new_date}）")
+                    self._write_renewed_marker()
                     return True
                 else:
                     logger.warning(f"⚠️ 服务器 {order_id} 续期后状态未变化，可能续期未生效（可续期日期: {new_date}）")
@@ -1090,6 +1102,7 @@ class EUserv:
             else:
                 # 无法重新获取该服务器信息，保守认为成功（接口本身未报错）
                 logger.warning(f"⚠️ 服务器 {order_id} 续期后无法重新获取状态，接口未报错，视为成功")
+                self._write_renewed_marker()
                 return True
             
         except json.JSONDecodeError as e:

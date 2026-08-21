@@ -2,8 +2,9 @@ name: EUserv Daily Renew
 
 on:
   schedule:
-    # 每天北京时间 20:00（UTC 12:00）检查一次；只有到期窗口才真正续期。
-    - cron: '0 12 * * *'
+    # 每月 6 号到月底，每天北京时间 20:00（UTC 12:00）检查一次；
+    # 续期成功写入 renewed_YYYY-MM.txt 后，后续运行会直接跳过。
+    - cron: '0 12 6-31 * *'
   workflow_dispatch:
 
 permissions:
@@ -19,6 +20,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Skip if already renewed this month
+        run: |
+          MARKER="renewed_$(date -u +%Y-%m).txt"
+          if [ -f "$MARKER" ]; then
+            echo "✅ 本月已续期，跳过本次运行"
+            exit 0
+          fi
+          echo "本月尚未续期，继续检查"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,6 +59,6 @@ jobs:
           date -u +"%Y-%m-%d %H:%M:%S UTC" > last_run.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add last_run.txt
+          git add last_run.txt renewed_*.txt
           git commit -m "chore: keep alive $(date -u +%Y-%m-%d)" || echo "No changes to commit"
           git push
