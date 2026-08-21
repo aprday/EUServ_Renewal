@@ -12,6 +12,7 @@ run_log.txt
 # Debug artifacts
 captcha_failed.png
 debug_page.html
+cookies/
 
 # Virtual environment
 venv/
