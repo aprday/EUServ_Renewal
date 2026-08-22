@@ -1,4 +1,4 @@
-name: EUserv Daily Renew
+name: EUserv Auto Renewal
 
 on:
   schedule:
@@ -22,25 +22,31 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Skip if already renewed this month
+        id: renewal-window
         run: |
           MARKER="renewed_$(date -u +%Y-%m).txt"
           if [ -f "$MARKER" ]; then
             echo "✅ 本月已续期，跳过本次运行"
-            exit 0
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "本月尚未续期，继续检查"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "本月尚未续期，继续检查"
 
       - name: Set up Python
+        if: steps.renewal-window.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install dependencies
+        if: steps.renewal-window.outputs.should_run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run EUserv renew script
+        if: steps.renewal-window.outputs.should_run == 'true'
         env:
           EUSERV_EMAIL: ${{ secrets.EUSERV_USERNAME }}
           EUSERV_PASSWORD: ${{ secrets.EUSERV_PASSWORD }}

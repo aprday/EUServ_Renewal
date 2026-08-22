@@ -1,18 +1,13 @@
 [project]
-name = "euserv-renewal"
-version = "0.1.0"
+name = "euserv-auto-renewal"
+version = "1.0.0"
+description = "Automated EUserv contract renewal with GitHub Actions, email PIN retrieval, and captcha fallback"
 requires-python = ">= 3.10"
 dependencies = [
     "requests==2.32.5",
     "beautifulsoup4==4.13.5",
     "ddddocr==1.5.6",
-    "pynacl>=1.6.2",
+    "imap-tools==1.7.0",
+    "python-dotenv==1.1.1",
+    "Pillow==12.1.0",
 ]
-
-[dependency-groups]
-dev = [
-    "pytest==8.3.5",
-]
-
-[tool.pytest.ini_options]
-pythonpath = ["."]
