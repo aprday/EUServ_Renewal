@@ -98,7 +98,7 @@ EUSERV_ORDER_IDS = {
     if order_id.strip()
 }
 RENEWAL_STATE_FILE = "renewal_state.json"
-RENEWAL_STOP_DAY = int(os.getenv("RENEWAL_STOP_DAY", "9"))
+RENEWAL_DUE_DATE = os.getenv("RENEWAL_DUE_DATE", "")
 
 
 # ============== 工具函数 ==============
@@ -158,6 +158,18 @@ def parse_contract_status(action_text: str, has_extend_control: bool, today=None
         return has_extend_control and current_date >= renewal_day, renewal_date
 
     return bool(has_extend_control), renewal_date
+
+
+def renewal_due_date_reached(due_date: str, today=None) -> bool:
+    """判断是否已达到当前合同在 EUserv 显示的可续期日期。"""
+    if not due_date:
+        return False
+    current_date = today or datetime.today().date()
+    try:
+        return current_date >= datetime.strptime(due_date, "%Y-%m-%d").date()
+    except ValueError:
+        logger.warning("续期状态文件中的日期格式无效，不自动停止重试")
+        return False
 
 
 def write_renewal_state(
@@ -1402,7 +1414,7 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
                         datetime.strptime(can_renew_date, "%Y-%m-%d").date()
                         <= datetime.today().date()
                     )
-                if datetime.today().day >= RENEWAL_STOP_DAY and renewal_date_is_due:
+                if renewal_date_is_due:
                     result['success'] = False
                     result['error'] = (
                         f"合同 {contract_label} 已到可续期日期 {can_renew_date}，"
@@ -1556,7 +1568,7 @@ def main():
         for result in all_results
         if not result.get('success', False)
     ]
-    if stop_errors and datetime.today().day >= RENEWAL_STOP_DAY:
+    if stop_errors and renewal_due_date_reached(RENEWAL_DUE_DATE):
         stop_detail = "; ".join(stop_errors)
         write_cycle_marker("stopped", stop_detail)
         order_id = next(iter(EUSERV_ORDER_IDS), "")

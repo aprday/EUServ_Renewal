@@ -2,8 +2,8 @@ name: EUserv Auto Renewal
 
 on:
   schedule:
-    # 每月 6 至 9 日，北京时间 20:00（UTC 12:00）检查一次。
-    - cron: '0 12 6-9 * *'
+    # 每天北京时间 20:00 做本地日期判断；仅进入合同续期窗口后才登录 EUserv。
+    - cron: '0 12 * * *'
   workflow_dispatch:
 
 permissions:
@@ -23,31 +23,29 @@ jobs:
       - name: Check renewal window
         id: renewal-window
         run: |
-          CURRENT_MONTH="$(TZ=Asia/Shanghai date +%Y-%m)"
-          CURRENT_DAY="$(TZ=Asia/Shanghai date +%d)"
+          CURRENT_DATE="$(TZ=Asia/Shanghai date +%Y-%m-%d)"
+          CURRENT_MONTH="${CURRENT_DATE:0:7}"
           RENEWED_MARKER="renewed_${CURRENT_MONTH}.txt"
           STOPPED_MARKER="stopped_${CURRENT_MONTH}.txt"
           NEXT_DATE="$(python -c "import json, pathlib; p=pathlib.Path('renewal_state.json'); print(json.loads(p.read_text(encoding='utf-8')).get('next_renewal_date', '') if p.exists() else '')")"
           STATE_STATUS="$(python -c "import json, pathlib; p=pathlib.Path('renewal_state.json'); print(json.loads(p.read_text(encoding='utf-8')).get('status', 'waiting') if p.exists() else 'waiting')")"
-          NEXT_MONTH="${NEXT_DATE:0:7}"
+          WINDOW_START="$(NEXT_DATE="$NEXT_DATE" python -c "import os; from datetime import datetime, timedelta; value=os.environ.get('NEXT_DATE', ''); print((datetime.strptime(value, '%Y-%m-%d').date()-timedelta(days=3)).isoformat() if value else '')")"
+          echo "due_date=$NEXT_DATE" >> "$GITHUB_OUTPUT"
 
           if [ "$STATE_STATUS" = "stopped" ]; then
             echo "上一续期轮次已停止，需人工处理 renewal_state.json 后才能恢复"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ "$CURRENT_DAY" -lt 6 ] || [ "$CURRENT_DAY" -gt 9 ]; then
-            echo "当前不在每月 6 至 9 日检查窗口，跳过登录"
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-          elif [ -n "$NEXT_MONTH" ] && [[ "$CURRENT_MONTH" < "$NEXT_MONTH" ]]; then
-            echo "下次可续期日期为 $NEXT_DATE，本月跳过登录"
+          elif [ -n "$WINDOW_START" ] && [[ "$CURRENT_DATE" < "$WINDOW_START" ]]; then
+            echo "下次可续期日期为 $NEXT_DATE，检查窗口从 $WINDOW_START 开始，跳过登录"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           elif [ -f "$RENEWED_MARKER" ]; then
             echo "本轮已续期成功，跳过登录"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           elif [ -f "$STOPPED_MARKER" ]; then
-            echo "本轮已在 9 日停止重试，跳过登录"
+            echo "本轮已在合同可续期日停止重试，跳过登录"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           else
-            echo "进入本月 6 至 9 日续期检查窗口"
+            echo "进入合同续期检查窗口：$WINDOW_START 至 $NEXT_DATE"
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -76,7 +74,7 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_USER_ID }}
           TG_API_HOST: ${{ secrets.TG_API_HOST }}
-          RENEWAL_STOP_DAY: '9'
+          RENEWAL_DUE_DATE: ${{ steps.renewal-window.outputs.due_date }}
         run: python euserv_renew.py
 
       - name: Keep repository schedule alive

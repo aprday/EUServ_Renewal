@@ -6,6 +6,7 @@ from euserv_renew import (
     parse_contract_status,
     private_label,
     redact_sensitive,
+    renewal_due_date_reached,
     write_renewal_state,
 )
 
@@ -67,3 +68,9 @@ def test_private_label_is_stable_and_does_not_reveal_value():
     assert label == private_label("account", "user@example.com")
     assert "user" not in label
     assert "example" not in label
+
+
+def test_stop_date_comes_from_contract_due_date():
+    assert not renewal_due_date_reached("2026-09-09", today=date(2026, 9, 8))
+    assert renewal_due_date_reached("2026-09-09", today=date(2026, 9, 9))
+    assert renewal_due_date_reached("2026-09-09", today=date(2026, 9, 10))
