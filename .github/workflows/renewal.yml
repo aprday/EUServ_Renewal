@@ -50,6 +50,7 @@ jobs:
         env:
           EUSERV_EMAIL: ${{ secrets.EUSERV_USERNAME }}
           EUSERV_PASSWORD: ${{ secrets.EUSERV_PASSWORD }}
+          EUSERV_ORDER_IDS: ${{ secrets.EUSERV_ORDER_IDS }}
           EMAIL_PIN: ${{ secrets.EMAIL_USERNAME }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASSWORD }}
           CAPTCHA_USERID: ${{ secrets.CAPTCHA_USERID }}

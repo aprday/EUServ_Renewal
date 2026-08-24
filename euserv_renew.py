@@ -51,6 +51,13 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 CAPTCHA_USERID = os.getenv("CAPTCHA_USERID", "")
 CAPTCHA_APIKEY = os.getenv("CAPTCHA_APIKEY", "")
 TRUECAPTCHA_API_URL = "https://api.apitruecaptcha.org/one/gettext"
+CONTRACT_EXTENSION_TEXT = "Contract extension possible from"
+EXTEND_CONTRACT_TEXT = "Extend contract"
+EUSERV_ORDER_IDS = {
+    order_id.strip()
+    for order_id in os.getenv("EUSERV_ORDER_IDS", "").split(",")
+    if order_id.strip()
+}
 
 
 # ============== 工具函数 ==============
@@ -95,6 +102,21 @@ def resolve_imap_server(email: str) -> str:
     # 未知域名：尝试通用规则 imap.<domain>
     logger.warning(f"⚠️ 未知邮箱域名 '{domain}'，使用推断地址 imap.{domain}，如不可用请手动配置")
     return f'imap.{domain}'
+
+
+def parse_contract_status(action_text: str, has_extend_control: bool, today=None) -> Tuple[bool, str]:
+    """解析合同续期状态；只有页面明确提供续期控件时才允许续期。"""
+    current_date = today or datetime.today().date()
+    date_match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', action_text or "")
+    renewal_date = date_match.group(1) if date_match else ""
+
+    if CONTRACT_EXTENSION_TEXT in (action_text or ""):
+        if not renewal_date:
+            return False, ""
+        renewal_day = datetime.strptime(renewal_date, "%Y-%m-%d").date()
+        return has_extend_control and current_date >= renewal_day, renewal_date
+
+    return bool(has_extend_control), renewal_date
 
 
 # ============== 配置数据类 ==============
@@ -944,17 +966,14 @@ class EUserv:
                         action_text = action_cells[-1].get_text(strip=True)
                     logger.debug(f"续期信息: {action_text}")
 
-                    can_renew = True
-                    can_renew_date = ""
-                    
-                    if "Contract extension possible from" in action_text:
-                        date_match = re.search(r'\b(\d{4}-\d{2}-\d{2})\b', action_text)
-                        if date_match:
-                            can_renew_date = date_match.group(1)
-                            can_renew = datetime.today().date() >= datetime.strptime(can_renew_date, "%Y-%m-%d").date()
-                        else:
-                            # 有提示但没解析出日期，保守处理为不可续期
-                            can_renew = False
+                    extend_control = tr.select_one(
+                        'input[value="Extend contract"], button[value="Extend contract"], '
+                        'input[name="Submit"][value*="Extend"], button[name="Submit"]'
+                    )
+                    has_extend_control = bool(extend_control) or EXTEND_CONTRACT_TEXT in action_text
+                    can_renew, can_renew_date = parse_contract_status(
+                        action_text, has_extend_control
+                    )
 
                     server_id_text = server_id_cells[0].get_text(strip=True)
                     servers[server_id_text] = (can_renew, can_renew_date)
@@ -977,7 +996,7 @@ class EUserv:
         except Exception as e:
             logger.warning(f"⚠️ 写入续期标记失败: {e}")
 
-    def renew_server(self, order_id: str) -> bool:
+    def renew_server(self, order_id: str, previous_date: str = "") -> bool:
         """续期服务器"""
         logger.info(f"正在续期服务器 {order_id}...")
         
@@ -1088,22 +1107,40 @@ class EUserv:
             # 步骤6: 验证续期结果（重新拉取服务器列表，对比可续期日期是否变化）
             logger.debug("步骤6: 点击续期13秒后验证续期结果...")
             time.sleep(13)
-            servers_after = self.get_servers()
+            servers_after = {}
+            for verification_attempt in range(3):
+                servers_after = self.get_servers()
+                if order_id in servers_after:
+                    break
+                if verification_attempt < 2:
+                    logger.warning(
+                        f"⚠️ 第 {verification_attempt + 1}/3 次未读到合同 {order_id}，5 秒后重试验证"
+                    )
+                    time.sleep(5)
             if order_id in servers_after:
                 can_renew_after, new_date = servers_after[order_id]
-                # 续期成功特征：服务器不再处于"可续期"状态
-                if not can_renew_after:
+                new_date_is_future = False
+                if new_date:
+                    new_date_is_future = (
+                        datetime.strptime(new_date, "%Y-%m-%d").date()
+                        > datetime.today().date()
+                    )
+                date_changed = bool(new_date and new_date != previous_date)
+                if not can_renew_after and new_date_is_future and date_changed:
                     logger.info(f"✅ 服务器 {order_id} 续期验证通过（新可续期日期: {new_date}）")
-                    self._write_renewed_marker()
                     return True
                 else:
-                    logger.warning(f"⚠️ 服务器 {order_id} 续期后状态未变化，可能续期未生效（可续期日期: {new_date}）")
+                    logger.error(
+                        f"❌ 服务器 {order_id} 续期无法确认："
+                        f"续期后可续状态={can_renew_after}，旧日期={previous_date or '无'}，"
+                        f"新日期={new_date or '无'}"
+                    )
                     return False
             else:
-                # 无法重新获取该服务器信息，保守认为成功（接口本身未报错）
-                logger.warning(f"⚠️ 服务器 {order_id} 续期后无法重新获取状态，接口未报错，视为成功")
-                self._write_renewed_marker()
-                return True
+                logger.error(
+                    f"❌ 服务器 {order_id} 续期后连续 3 次无法重新读取合同状态，判定为失败"
+                )
+                return False
             
         except json.JSONDecodeError as e:
             logger.error(f"❌ JSON 解析失败: {e}", exc_info=True)
@@ -1231,12 +1268,27 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
 
         # 获取服务器列表
         servers = euserv.get_servers()
+        if EUSERV_ORDER_IDS:
+            ignored_order_ids = sorted(set(servers) - EUSERV_ORDER_IDS)
+            for ignored_order_id in ignored_order_ids:
+                logger.info(
+                    f"⏭️ 合同 {ignored_order_id} 不在 EUSERV_ORDER_IDS 白名单中，跳过"
+                )
+            servers = {
+                order_id: status
+                for order_id, status in servers.items()
+                if order_id in EUSERV_ORDER_IDS
+            }
         result['servers'] = servers
         
         if not servers:
-            result['error'] = "未找到任何服务器"
+            result['error'] = (
+                "未找到 EUSERV_ORDER_IDS 指定的服务器"
+                if EUSERV_ORDER_IDS
+                else "未找到任何服务器"
+            )
             result['error_type'] = 'get_servers'
-            result['success'] = True  # 登录成功，只是没有服务器
+            result['success'] = False
             return result
         
         # 检查并续期
@@ -1244,7 +1296,7 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
             logger.info(f"检查服务器: {order_id}")
             if can_renew:
                 logger.info(f"⏰ 服务器 {order_id} 可以续期")
-                if euserv.renew_server(order_id):
+                if euserv.renew_server(order_id, can_renew_date):
                     result['renew_results'].append({
                         'order_id': order_id,
                         'success': True,
@@ -1259,7 +1311,13 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
             else:
                 logger.info(f"✓ 服务器 {order_id} 暂不需要续期（可续期日期: {can_renew_date}）")
         
-        result['success'] = True
+        result['success'] = not any(
+            not renewal_result['success']
+            for renewal_result in result['renew_results']
+        )
+        if not result['success']:
+            result['error'] = "至少一台服务器续期未能验证成功"
+            result['error_type'] = 'renewal'
         
     except Exception as e:
         logger.error(f"处理账号 {account_config.email} 时发生异常: {e}", exc_info=True)
@@ -1329,8 +1387,8 @@ def main():
                 notify_parts.append(
                     f"<b>📧 {email}</b>\n  ❌ 登录处理失败: {error_msg}"
                 )
-            # ② 其他异常 → 通知
-            elif error_type == 'exception':
+            # ② 续期失败或其他异常 → 通知
+            elif error_type in {'exception', 'renewal'}:
                 notify_parts.append(
                     f"<b>📧 {email}</b>\n  ❌ 处理异常: {error_msg}"
                 )
@@ -1372,6 +1430,18 @@ def main():
         send_notification("EUserv 续期通知", message, GLOBAL_CONFIG)
     else:
         logger.info("✅ 本次无续期操作，无需发送通知")
+
+    renewal_attempts = [
+        renewal_result
+        for result in all_results
+        for renewal_result in result.get('renew_results', [])
+    ]
+    if renewal_attempts and all(item['success'] for item in renewal_attempts):
+        EUserv._write_renewed_marker()
+
+    if any(not result.get('success', False) for result in all_results):
+        logger.error("本次存在失败账号或未验证成功的续期操作")
+        sys.exit(1)
     
     logger.info("\n" + "=" * 60)
     logger.info("执行完成")

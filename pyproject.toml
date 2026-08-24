@@ -11,3 +11,11 @@ dependencies = [
     "python-dotenv==1.1.1",
     "Pillow==12.1.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest==8.3.5",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

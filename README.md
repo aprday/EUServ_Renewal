@@ -24,7 +24,7 @@
 - cron: '0 12 6-31 * *'
 ```
 
-含义是每月 6 日至月底，每天 UTC 12:00，也就是北京时间 20:00 检查一次。
+含义是每月 6 日至月底，每天 UTC 12:00，也就是北京时间 20:00 检查一次。脚本只有在页面明确出现 `Extend contract` 控件时才提交续期。
 
 例如合同显示：
 
@@ -47,6 +47,7 @@ Contract extension possible from 2026-09-09
 | --- | --- |
 | `EUSERV_USERNAME` | EUserv 登录邮箱或客户 ID |
 | `EUSERV_PASSWORD` | EUserv 登录密码 |
+| `EUSERV_ORDER_IDS` | 允许续期的合同编号；多个编号用英文逗号分隔 |
 | `EMAIL_USERNAME` | 接收 EUserv PIN 的邮箱地址 |
 | `EMAIL_PASSWORD` | 邮箱应用专用密码；Gmail 请保留生成时的完整格式 |
 
