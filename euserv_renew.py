@@ -31,12 +31,51 @@ from dotenv import load_dotenv
 if os.path.exists('dev.env'):
     load_dotenv('dev.env')
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(threadName)s] %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+SENSITIVE_ENV_NAMES = {
+    "EUSERV_EMAIL", "EUSERV_USERNAME", "EUSERV_PASSWORD",
+    "EMAIL_PIN", "EMAIL_USERNAME", "EMAIL_PASS", "EMAIL_PASSWORD",
+    "CAPTCHA_USERID", "CAPTCHA_APIKEY", "TG_BOT_TOKEN", "TG_CHAT_ID",
+    "TG_USER_ID", "PAT_WITH_WORKFLOW_SCOPE",
+}
+
+
+def redact_sensitive(value: object) -> str:
+    """遮盖日志或通知中可能出现的凭据和个人标识。"""
+    redacted = str(value)
+    for env_name in SENSITIVE_ENV_NAMES:
+        secret = os.getenv(env_name, "")
+        if secret and len(secret) >= 3:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    redacted = re.sub(
+        r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
+        "[REDACTED_EMAIL]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)(PIN|captcha|验证码|token|sess_id)(\s*(?:码)?\s*[:=]\s*)([^\s,;]+)",
+        r"\1\2[REDACTED]",
+        redacted,
+    )
+    return redacted
+
+
+def private_label(kind: str, value: object) -> str:
+    """生成不可逆、稳定的匿名标签，便于区分多个账号或合同。"""
+    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:8]
+    return f"{kind}-{digest}"
+
+
+class RedactingFormatter(logging.Formatter):
+    def format(self, record):
+        return redact_sensitive(super().format(record))
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(RedactingFormatter(
+    '%(asctime)s [%(threadName)s] %(levelname)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+))
+logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 logger = logging.getLogger(__name__)
 
 # 兼容新版 Pillow
@@ -126,7 +165,6 @@ def write_renewal_state(
 ) -> None:
     """保存下一次可续期日期，让 Actions 在此之前不登录 EUserv。"""
     state = {
-        "order_id": order_id,
         "next_renewal_date": next_renewal_date,
         "status": status,
         "detail": detail,
@@ -334,7 +372,7 @@ def recognize_and_calculate(captcha_image_url: str, session: requests.Session) -
         if CAPTCHA_USERID and CAPTCHA_APIKEY:
             api_result = _solve_captcha_api(response.content)
             if api_result:
-                logger.info(f"TrueCaptcha API 识别成功: {api_result}")
+                logger.info("TrueCaptcha API 识别成功")
                 return api_result
 
         img = Image.open(io.BytesIO(response.content)).convert('RGB')
@@ -388,21 +426,21 @@ def recognize_and_calculate(captcha_image_url: str, session: requests.Session) -
         with ocr_lock:
             text = ocr.classification(processed_bytes, png_fix=True).strip()
         
-        logger.debug(f"OCR 原始识别: {text}")
+        logger.debug("本地 OCR 已返回识别结果")
 
         # 预处理：去除空格
         raw_text = text.strip().replace(' ', '')
         text_len = len(raw_text)
         
-        logger.info(f"验证码长度: {text_len}, 内容: {raw_text}")
+        logger.info(f"验证码识别完成，长度: {text_len}")
         
         # ===== 情况1：长度 >= 6，按纯字母数字验证码处理 =====
         if text_len >= 6:
-            logger.info(f"检测到 >= 6 位验证码，按纯字母数字处理: {raw_text}")
+            logger.info("检测到纯字母数字验证码")
             return raw_text.upper()  # 统一大写返回
         
         # ===== 情况2：长度 < 6，按运算验证码处理 =====
-        logger.info(f"检测到 < 6 位验证码，按运算验证码处理: {raw_text}")
+        logger.info("检测到运算验证码")
         
         # 尝试多种解析策略
         # 策略1：标准3位格式 (数字 运算符 数字)
@@ -516,7 +554,7 @@ def calculate_operation(left: int, op: str, right: int, raw_text: str, silent: b
             return None
         
         if not silent:
-            logger.info(f"验证码计算: {left} {op_name} {right} = {result}")
+            logger.info("运算验证码计算完成")
         return str(result)
     except Exception as e:
         if not silent:
@@ -552,7 +590,7 @@ def get_euserv_pin(email: str, email_password: str, imap_server: str,
                 logger.info(f"PIN 邮件尚未到达，{retry_interval} 秒后第 {attempt}/{max_retries} 次重试...")
                 time.sleep(retry_interval)
 
-            logger.info(f"正在从邮箱 {email} 获取 PIN 码（第 {attempt}/{max_retries} 次）...")
+            logger.info(f"正在从 PIN 邮箱读取邮件（第 {attempt}/{max_retries} 次）...")
             with MailBox(imap_server).login(email, email_password) as mailbox:
                 for msg in mailbox.fetch(AND(from_='no-reply@euserv.com', body='PIN'), limit=1, reverse=True):
                     logger.debug(f"找到邮件: {msg.subject}, 收件时间: {msg.date_str}")
@@ -566,13 +604,13 @@ def get_euserv_pin(email: str, email_password: str, imap_server: str,
                     match = re.search(r'PIN:\s*\n?(\d{6})', msg.text)
                     if match:
                         pin = match.group(1)
-                        logger.info(f"✅ 提取到 PIN 码: {pin}")
+                        logger.info("✅ 已提取 PIN 码")
                         return pin
                     else:
                         match_fallback = re.search(r'(\d{6})', msg.text)
                         if match_fallback:
                             pin = match_fallback.group(1)
-                            logger.warning(f"⚠️ 备选匹配 PIN 码: {pin}")
+                            logger.warning("⚠️ 已通过备选规则提取 PIN 码")
                             return pin
 
         except Exception as e:
@@ -650,7 +688,7 @@ class EUserv:
 
     def login(self) -> bool:
         """登录 EUserv（支持验证码和 PIN，Cookie 持久化跳过 PIN）"""
-        logger.info(f"正在登录账号: {self.config.email}")
+        logger.info(f"正在登录账号: {private_label('account', self.config.email)}")
 
         headers = {
             'user-agent': USER_AGENT,
@@ -671,7 +709,7 @@ class EUserv:
                 return False
 
             sess_id = sess_id_match.group(1)
-            logger.debug(f"获取到 sess_id: {sess_id[:20]}...")
+            logger.debug("已获取登录会话标识")
 
             # 访问 logo
             logo_png_url = "https://support.euserv.com/pic/logo_small.png"
@@ -780,11 +818,11 @@ class EUserv:
             ]
 
             if any(success_checks):
-                logger.info(f"✅ 账号 {self.config.email} 登录成功")
+                logger.info(f"✅ 账号 {private_label('account', self.config.email)} 登录成功")
                 self.sess_id = sess_id
                 return True
             else:
-                logger.error(f"❌ 账号 {self.config.email} 登录失败")
+                logger.error(f"❌ 账号 {private_label('account', self.config.email)} 登录失败")
                 return False
 
         except Exception as e:
@@ -959,7 +997,7 @@ class EUserv:
 
     def get_servers(self) -> Dict[str, Tuple[bool, str]]:
         """获取服务器列表"""
-        logger.info(f"正在获取账号 {self.config.email} 的服务器列表...")
+        logger.info(f"正在获取账号 {private_label('account', self.config.email)} 的服务器列表...")
         
         if not self.sess_id:
             logger.error("❌ 未登录")
@@ -1008,7 +1046,7 @@ class EUserv:
                     server_id_text = server_id_cells[0].get_text(strip=True)
                     servers[server_id_text] = (can_renew, can_renew_date)
             
-            logger.info(f"✅ 账号 {self.config.email} 找到 {len(servers)} 台服务器")
+            logger.info(f"✅ 账号 {private_label('account', self.config.email)} 找到 {len(servers)} 台服务器")
             return servers
             
         except Exception as e:
@@ -1026,7 +1064,7 @@ class EUserv:
 
     def renew_server(self, order_id: str, previous_date: str = "") -> bool:
         """续期服务器"""
-        logger.info(f"正在续期服务器 {order_id}...")
+        logger.info(f"正在续期服务器 {private_label('contract', order_id)}...")
         
         url = "https://support.euserv.com/index.iphp"
         headers = {
@@ -1104,7 +1142,7 @@ class EUserv:
                 return False
             
             token = result['token']['value']
-            logger.debug(f"✅ 获取到 token: {token[:20]}...")
+            logger.debug("✅ 已获取临时续期 Token")
             time.sleep(2)
 
             # 步骤4.5: 弹出小窗
@@ -1142,7 +1180,8 @@ class EUserv:
                     break
                 if verification_attempt < 2:
                     logger.warning(
-                        f"⚠️ 第 {verification_attempt + 1}/3 次未读到合同 {order_id}，5 秒后重试验证"
+                        f"⚠️ 第 {verification_attempt + 1}/3 次未读到合同 "
+                        f"{private_label('contract', order_id)}，5 秒后重试验证"
                     )
                     time.sleep(5)
             if order_id in servers_after:
@@ -1156,18 +1195,22 @@ class EUserv:
                 date_changed = bool(new_date and new_date != previous_date)
                 if not can_renew_after and new_date_is_future and date_changed:
                     write_renewal_state(order_id, new_date, status="waiting")
-                    logger.info(f"✅ 服务器 {order_id} 续期验证通过（新可续期日期: {new_date}）")
+                    logger.info(
+                        f"✅ 服务器 {private_label('contract', order_id)} 续期验证通过"
+                        f"（新可续期日期: {new_date}）"
+                    )
                     return True
                 else:
                     logger.error(
-                        f"❌ 服务器 {order_id} 续期无法确认："
+                        f"❌ 服务器 {private_label('contract', order_id)} 续期无法确认："
                         f"续期后可续状态={can_renew_after}，旧日期={previous_date or '无'}，"
                         f"新日期={new_date or '无'}"
                     )
                     return False
             else:
                 logger.error(
-                    f"❌ 服务器 {order_id} 续期后连续 3 次无法重新读取合同状态，判定为失败"
+                    f"❌ 服务器 {private_label('contract', order_id)} "
+                    "续期后连续 3 次无法重新读取合同状态，判定为失败"
                 )
                 return False
             
@@ -1175,7 +1218,10 @@ class EUserv:
             logger.error(f"❌ JSON 解析失败: {e}", exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"❌ 服务器 {order_id} 续期失败: {e}", exc_info=True)
+            logger.error(
+                f"❌ 服务器 {private_label('contract', order_id)} 续期失败: {e}",
+                exc_info=True,
+            )
             return False
 
 
@@ -1279,7 +1325,10 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
         login_success = False
         for attempt in range(global_config.max_login_retries):
             if attempt > 0:
-                logger.info(f"账号 {account_config.email} 第 {attempt + 1} 次登录尝试...")
+                logger.info(
+                    f"账号 {private_label('account', account_config.email)} "
+                    f"第 {attempt + 1} 次登录尝试..."
+                )
                 time.sleep(5)
             
             if euserv.login():
@@ -1293,7 +1342,10 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
         
         # 更新用户信息（不影响续期主流程）
         if not euserv.update_info():
-            logger.warning(f"⚠️ 账号 {account_config.email} 更新用户信息失败，续期流程继续")
+            logger.warning(
+                f"⚠️ 账号 {private_label('account', account_config.email)} "
+                "更新用户信息失败，续期流程继续"
+            )
 
         # 获取服务器列表
         servers = euserv.get_servers()
@@ -1301,7 +1353,8 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
             ignored_order_ids = sorted(set(servers) - EUSERV_ORDER_IDS)
             for ignored_order_id in ignored_order_ids:
                 logger.info(
-                    f"⏭️ 合同 {ignored_order_id} 不在 EUSERV_ORDER_IDS 白名单中，跳过"
+                    f"⏭️ 合同 {private_label('contract', ignored_order_id)} "
+                    "不在白名单中，跳过"
                 )
             servers = {
                 order_id: status
@@ -1322,23 +1375,27 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
         
         # 检查并续期
         for order_id, (can_renew, can_renew_date) in servers.items():
-            logger.info(f"检查服务器: {order_id}")
+            contract_label = private_label('contract', order_id)
+            logger.info(f"检查服务器: {contract_label}")
             if can_renew:
-                logger.info(f"⏰ 服务器 {order_id} 可以续期")
+                logger.info(f"⏰ 服务器 {contract_label} 可以续期")
                 if euserv.renew_server(order_id, can_renew_date):
                     result['renew_results'].append({
                         'order_id': order_id,
                         'success': True,
-                        'message': f"✅ 服务器 {order_id} 续期成功"
+                        'message': f"✅ 服务器 {contract_label} 续期成功"
                     })
                 else:
                     result['renew_results'].append({
                         'order_id': order_id,
                         'success': False,
-                        'message': f"❌ 服务器 {order_id} 续期失败"
+                        'message': f"❌ 服务器 {contract_label} 续期失败"
                     })
             else:
-                logger.info(f"✓ 服务器 {order_id} 暂不需要续期（可续期日期: {can_renew_date}）")
+                logger.info(
+                    f"✓ 服务器 {contract_label} 暂不需要续期"
+                    f"（可续期日期: {can_renew_date}）"
+                )
                 renewal_date_is_due = False
                 if can_renew_date:
                     renewal_date_is_due = (
@@ -1348,7 +1405,7 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
                 if datetime.today().day >= RENEWAL_STOP_DAY and renewal_date_is_due:
                     result['success'] = False
                     result['error'] = (
-                        f"合同 {order_id} 已到可续期日期 {can_renew_date}，"
+                        f"合同 {contract_label} 已到可续期日期 {can_renew_date}，"
                         "但页面仍未出现 Extend contract 控件；本轮停止继续尝试"
                     )
                     result['error_type'] = 'renewal_unavailable'
@@ -1357,13 +1414,16 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
         result['success'] = result['error'] is None and not any(
             not renewal_result['success'] for renewal_result in result['renew_results']
         )
-        if not result['success']:
+        if not result['success'] and not result['error']:
             result['error'] = "至少一台服务器续期未能验证成功"
             result['error_type'] = 'renewal'
         
     except Exception as e:
-        logger.error(f"处理账号 {account_config.email} 时发生异常: {e}", exc_info=True)
-        result['error'] = str(e)
+        logger.error(
+            f"处理账号 {private_label('account', account_config.email)} 时发生异常: {e}",
+            exc_info=True,
+        )
+        result['error'] = redact_sensitive(e)
         result['error_type'] = 'exception'
     
     return result
@@ -1399,11 +1459,15 @@ def main():
                 result = future.result()
                 all_results.append(result)
             except Exception as e:
-                logger.error(f"处理账号 {account.email} 时发生未预期的异常: {e}", exc_info=True)
+                logger.error(
+                    f"处理账号 {private_label('account', account.email)} "
+                    f"时发生未预期的异常: {e}",
+                    exc_info=True,
+                )
                 all_results.append({
                     'email': account.email,
                     'success': False,
-                    'error': f"未预期的异常: {str(e)}"
+                    'error': f"未预期的异常: {redact_sensitive(e)}"
                 })
     
     # 生成汇总报告 & 按需通知
@@ -1417,11 +1481,12 @@ def main():
 
     for result in all_results:
         email = result['email']
-        logger.info(f"\n账号: {email}")
+        account_label = private_label('account', email)
+        logger.info(f"\n账号: {account_label}")
 
         if not result['success']:
             error_type = result.get('error_type', 'exception')
-            error_msg = result.get('error', '未知错误')
+            error_msg = redact_sensitive(result.get('error', '未知错误'))
             logger.error(f"  ❌ 处理失败: {error_msg}")
 
             error_labels = {
@@ -1432,7 +1497,8 @@ def main():
                 'exception': '处理异常',
             }
             notify_parts.append(
-                f"<b>📧 {email}</b>\n  ❌ {error_labels.get(error_type, '处理失败')}: {error_msg}"
+                f"<b>📧 {account_label}</b>\n  ❌ "
+                f"{error_labels.get(error_type, '处理失败')}: {error_msg}"
             )
             continue
 
@@ -1443,7 +1509,8 @@ def main():
         if result.get('error_type') == 'get_servers':
             logger.warning(f"  ⚠️ {result.get('error')}")
             notify_parts.append(
-                f"<b>📧 {email}</b>\n  ⚠️ 获取服务器信息失败: {result.get('error')}"
+                f"<b>📧 {account_label}</b>\n  ⚠️ 获取服务器信息失败: "
+                f"{redact_sensitive(result.get('error'))}"
             )
             continue
 
@@ -1456,14 +1523,17 @@ def main():
                 renew_lines.append(f"  {rr['message']}")
             # ④ 有续期操作（不管成功失败）→ 通知
             notify_parts.append(
-                f"<b>📧 {email}</b>\n" + "\n".join(renew_lines)
+                f"<b>📧 {account_label}</b>\n" + "\n".join(renew_lines)
             )
         else:
             # ⑤ 无需续期 → 仅记录日志，不发通知
             logger.info("  ✓ 所有服务器均无需续期")
             for order_id, (can_renew, can_renew_date) in servers.items():
                 if can_renew_date:
-                    logger.info(f"    订单 {order_id}: 可续期日期 {can_renew_date}")
+                    logger.info(
+                        f"    订单 {private_label('contract', order_id)}: "
+                        f"可续期日期 {can_renew_date}"
+                    )
 
     # 发送通知（同步调用，确保发送完成再退出）
     if notify_parts:

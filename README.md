@@ -17,6 +17,7 @@
 - 保存受信任设备 Cookie，减少重复 PIN 验证
 - 可选 Telegram 和 Bark 通知
 - 支持多个 EUserv 账号
+- 默认对公开 Actions 日志和通知中的账号、合同及安全数据进行脱敏
 
 ## 调度方式
 
@@ -101,6 +102,15 @@ API 失败时自动回退到本地 `ddddocr`，不会把 EUserv 登录 Cookie �
 - Gmail 使用独立应用专用密码，不使用 Google 主密码。
 - 定期轮换 EUserv 密码、邮箱应用密码、Telegram Token 和 GitHub Token。
 - 不要运行来源不明的 Pull Request workflow；它可能尝试读取或外传 Secrets。
+
+### 公开日志隐私
+
+- EUserv 邮箱和 PIN 邮箱不会写入日志，账号显示为不可逆匿名标签，例如 `account-a1b2c3d4`。
+- 合同编号不会写入日志或 `renewal_state.json`，合同显示为匿名标签，例如 `contract-e5f6a7b8`。
+- 图片验证码内容、邮箱 PIN、登录会话标识和临时续期 Token 均不输出。
+- 统一日志过滤器会再次遮盖环境变量中的账号、密码、API Key、Bot Token 和 PAT。
+- Telegram/Bark 通知沿用相同的匿名账号和合同标签。
+- 下一次可续期日期仍保存在 `renewal_state.json`，用于避免无意义登录；其中不保存账号或合同编号。
 
 ## 本地运行
 
