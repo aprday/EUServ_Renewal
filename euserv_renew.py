@@ -58,6 +58,8 @@ EUSERV_ORDER_IDS = {
     for order_id in os.getenv("EUSERV_ORDER_IDS", "").split(",")
     if order_id.strip()
 }
+RENEWAL_STATE_FILE = "renewal_state.json"
+RENEWAL_STOP_DAY = int(os.getenv("RENEWAL_STOP_DAY", "9"))
 
 
 # ============== 工具函数 ==============
@@ -117,6 +119,34 @@ def parse_contract_status(action_text: str, has_extend_control: bool, today=None
         return has_extend_control and current_date >= renewal_day, renewal_date
 
     return bool(has_extend_control), renewal_date
+
+
+def write_renewal_state(
+    order_id: str, next_renewal_date: str, status: str = "waiting", detail: str = ""
+) -> None:
+    """保存下一次可续期日期，让 Actions 在此之前不登录 EUserv。"""
+    state = {
+        "order_id": order_id,
+        "next_renewal_date": next_renewal_date,
+        "status": status,
+        "detail": detail,
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    with open(RENEWAL_STATE_FILE, "w", encoding="utf-8") as state_file:
+        json.dump(state, state_file, ensure_ascii=False, indent=2)
+        state_file.write("\n")
+    logger.info(f"✅ 已保存续期状态: {status}，下次日期: {next_renewal_date or '未知'}")
+
+
+def write_cycle_marker(prefix: str, detail: str = "") -> str:
+    """写入当前续期轮次的成功或停止标记。"""
+    marker = f"{prefix}_{datetime.now().strftime('%Y-%m')}.txt"
+    with open(marker, "w", encoding="utf-8") as marker_file:
+        marker_file.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+        if detail:
+            marker_file.write(detail + "\n")
+    logger.info(f"已写入续期轮次标记: {marker}")
+    return marker
 
 
 # ============== 配置数据类 ==============
@@ -989,10 +1019,8 @@ class EUserv:
     def _write_renewed_marker() -> None:
         """续期成功后写入本月标记，工作流据此停止本月后续运行。"""
         try:
-            marker = f"renewed_{datetime.now().strftime('%Y-%m')}.txt"
-            with open(marker, "w", encoding="utf-8") as f:
-                f.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
-            logger.info(f"✅ 已写入本月续期标记: {marker}")
+            marker = write_cycle_marker("renewed")
+            logger.info(f"✅ 已写入本轮续期成功标记: {marker}")
         except Exception as e:
             logger.warning(f"⚠️ 写入续期标记失败: {e}")
 
@@ -1127,6 +1155,7 @@ class EUserv:
                     )
                 date_changed = bool(new_date and new_date != previous_date)
                 if not can_renew_after and new_date_is_future and date_changed:
+                    write_renewal_state(order_id, new_date, status="waiting")
                     logger.info(f"✅ 服务器 {order_id} 续期验证通过（新可续期日期: {new_date}）")
                     return True
                 else:
@@ -1310,10 +1339,23 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
                     })
             else:
                 logger.info(f"✓ 服务器 {order_id} 暂不需要续期（可续期日期: {can_renew_date}）")
+                renewal_date_is_due = False
+                if can_renew_date:
+                    renewal_date_is_due = (
+                        datetime.strptime(can_renew_date, "%Y-%m-%d").date()
+                        <= datetime.today().date()
+                    )
+                if datetime.today().day >= RENEWAL_STOP_DAY and renewal_date_is_due:
+                    result['success'] = False
+                    result['error'] = (
+                        f"合同 {order_id} 已到可续期日期 {can_renew_date}，"
+                        "但页面仍未出现 Extend contract 控件；本轮停止继续尝试"
+                    )
+                    result['error_type'] = 'renewal_unavailable'
+                    break
         
-        result['success'] = not any(
-            not renewal_result['success']
-            for renewal_result in result['renew_results']
+        result['success'] = result['error'] is None and not any(
+            not renewal_result['success'] for renewal_result in result['renew_results']
         )
         if not result['success']:
             result['error'] = "至少一台服务器续期未能验证成功"
@@ -1382,16 +1424,16 @@ def main():
             error_msg = result.get('error', '未知错误')
             logger.error(f"  ❌ 处理失败: {error_msg}")
 
-            # ① 登录失败 → 通知
-            if error_type == 'login':
-                notify_parts.append(
-                    f"<b>📧 {email}</b>\n  ❌ 登录处理失败: {error_msg}"
-                )
-            # ② 续期失败或其他异常 → 通知
-            elif error_type in {'exception', 'renewal'}:
-                notify_parts.append(
-                    f"<b>📧 {email}</b>\n  ❌ 处理异常: {error_msg}"
-                )
+            error_labels = {
+                'login': '登录失败',
+                'get_servers': '获取合同信息失败',
+                'renewal': '续期验证失败',
+                'renewal_unavailable': '续期入口未开放',
+                'exception': '处理异常',
+            }
+            notify_parts.append(
+                f"<b>📧 {email}</b>\n  ❌ {error_labels.get(error_type, '处理失败')}: {error_msg}"
+            )
             continue
 
         servers = result.get('servers', {})
@@ -1438,6 +1480,17 @@ def main():
     ]
     if renewal_attempts and all(item['success'] for item in renewal_attempts):
         EUserv._write_renewed_marker()
+
+    stop_errors = [
+        result.get('error', '')
+        for result in all_results
+        if not result.get('success', False)
+    ]
+    if stop_errors and datetime.today().day >= RENEWAL_STOP_DAY:
+        stop_detail = "; ".join(stop_errors)
+        write_cycle_marker("stopped", stop_detail)
+        order_id = next(iter(EUSERV_ORDER_IDS), "")
+        write_renewal_state(order_id, "", status="stopped", detail=stop_detail)
 
     if any(not result.get('success', False) for result in all_results):
         logger.error("本次存在失败账号或未验证成功的续期操作")

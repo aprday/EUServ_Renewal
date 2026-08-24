@@ -1,6 +1,8 @@
 from datetime import date
 
-from euserv_renew import parse_contract_status
+import json
+
+from euserv_renew import parse_contract_status, write_renewal_state
 
 
 def test_future_renewal_date_is_not_renewable():
@@ -27,3 +29,15 @@ def test_due_date_still_requires_explicit_control():
         has_extend_control=False,
         today=date(2026, 9, 9),
     ) == (False, "2026-09-09")
+
+
+def test_write_renewal_state(tmp_path, monkeypatch):
+    state_file = tmp_path / "renewal_state.json"
+    monkeypatch.setattr("euserv_renew.RENEWAL_STATE_FILE", str(state_file))
+
+    write_renewal_state("479673", "2027-09-09")
+
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    assert state["order_id"] == "479673"
+    assert state["next_renewal_date"] == "2027-09-09"
+    assert state["status"] == "waiting"
