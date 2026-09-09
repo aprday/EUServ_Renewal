@@ -1,6 +1,6 @@
 {
-  "next_renewal_date": "2026-09-09",
-  "status": "waiting",
-  "detail": "",
-  "updated_at": "2026-08-24T20:00:00+08:00"
+  "next_renewal_date": "",
+  "status": "stopped",
+  "detail": "至少一台服务器续期未能验证成功",
+  "updated_at": "2026-09-09T15:25:05+00:00"
 }
