@@ -1186,13 +1186,13 @@ class EUserv:
             logger.debug("步骤6: 点击续期13秒后验证续期结果...")
             time.sleep(13)
             servers_after = {}
-            for verification_attempt in range(3):
+            for verification_attempt in range(5):
                 servers_after = self.get_servers()
                 if order_id in servers_after:
                     break
-                if verification_attempt < 2:
+                if verification_attempt < 4:
                     logger.warning(
-                        f"⚠️ 第 {verification_attempt + 1}/3 次未读到合同 "
+                        f"⚠️ 第 {verification_attempt + 1}/5 次未读到合同 "
                         f"{private_label('contract', order_id)}，5 秒后重试验证"
                     )
                     time.sleep(5)
@@ -1222,7 +1222,7 @@ class EUserv:
             else:
                 logger.error(
                     f"❌ 服务器 {private_label('contract', order_id)} "
-                    "续期后连续 3 次无法重新读取合同状态，判定为失败"
+                    "续期后连续 5 次无法重新读取合同状态，判定为失败"
                 )
                 return False
             
