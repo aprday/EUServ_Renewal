@@ -188,6 +188,17 @@ def write_renewal_state(
     logger.info(f"✅ 已保存续期状态: {status}，下次日期: {next_renewal_date or '未知'}")
 
 
+def read_renewal_state() -> dict:
+    """读取续期状态文件；文件缺失或损坏时返回空字典，不中断流程。"""
+    try:
+        with open(RENEWAL_STATE_FILE, encoding="utf-8") as state_file:
+            data = json.load(state_file)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        logger.warning(f"⚠️ 续期状态文件无法读取，将按合同页面自愈: {type(e).__name__}")
+        return {}
+
+
 def write_cycle_marker(prefix: str, detail: str = "") -> str:
     """写入当前续期轮次的成功或停止标记。"""
     marker = f"{prefix}_{datetime.now().strftime('%Y-%m')}.txt"
@@ -1193,9 +1204,9 @@ class EUserv:
                 if verification_attempt < 4:
                     logger.warning(
                         f"⚠️ 第 {verification_attempt + 1}/5 次未读到合同 "
-                        f"{private_label('contract', order_id)}，5 秒后重试验证"
+                        f"{private_label('contract', order_id)}，15 秒后重试验证"
                     )
-                    time.sleep(5)
+                    time.sleep(15)
             if order_id in servers_after:
                 can_renew_after, new_date = servers_after[order_id]
                 new_date_is_future = False
@@ -1422,6 +1433,14 @@ def process_account(account_config: AccountConfig, global_config: GlobalConfig) 
                     )
                     result['error_type'] = 'renewal_unavailable'
                     break
+                elif (
+                    can_renew_date
+                    and can_renew_date != read_renewal_state().get("next_renewal_date")
+                ):
+                    write_renewal_state(order_id, can_renew_date)
+                    logger.info(
+                        f"✅ 已按合同页面自愈下次可续期日期: {can_renew_date}"
+                    )
         
         result['success'] = result['error'] is None and not any(
             not renewal_result['success'] for renewal_result in result['renew_results']
