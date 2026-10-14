@@ -1,1 +1,6 @@
-{"status":"waiting","detail":"","updated_at":"2026-10-14T11:00:00+08:00","next_renewal_date":""}
+{
+  "next_renewal_date": "2026-11-09",
+  "status": "waiting",
+  "detail": "",
+  "updated_at": "2026-10-14T02:37:06+00:00"
+}
