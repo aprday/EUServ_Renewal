@@ -27,6 +27,11 @@ jobs:
           CURRENT_MONTH="${CURRENT_DATE:0:7}"
           RENEWED_MARKER="renewed_${CURRENT_MONTH}.txt"
           STOPPED_MARKER="stopped_${CURRENT_MONTH}.txt"
+          REPAIR_RESULT="$(python3 tools/repair_state.py 2>&1 || true)"
+          echo "$REPAIR_RESULT"
+          if echo "$REPAIR_RESULT" | grep -q '^repaired'; then
+            echo "state_repaired=true" >> "$GITHUB_OUTPUT"
+          fi
           NEXT_DATE="$(python -c "import json, pathlib; p=pathlib.Path('renewal_state.json'); print(json.loads(p.read_text(encoding='utf-8')).get('next_renewal_date', '') if p.exists() else '')" 2>/dev/null || true)"
           STATE_STATUS="$(python -c "import json, pathlib; p=pathlib.Path('renewal_state.json'); print(json.loads(p.read_text(encoding='utf-8')).get('status', 'waiting') if p.exists() else 'waiting')" 2>/dev/null || true)"
           WINDOW_START="$(NEXT_DATE="$NEXT_DATE" python -c "import os; from datetime import datetime, timedelta; value=os.environ.get('NEXT_DATE', ''); print((datetime.strptime(value, '%Y-%m-%d').date()-timedelta(days=3)).isoformat() if value else '')" 2>/dev/null || true)"
@@ -77,6 +82,36 @@ jobs:
           TG_API_HOST: ${{ secrets.TG_API_HOST }}
           RENEWAL_DUE_DATE: ${{ steps.renewal-window.outputs.due_date }}
         run: python euserv_renew.py
+
+      - name: Notify state file repaired
+        if: steps.renewal-window.outputs.state_repaired == 'true'
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_USER_ID }}
+          TG_API_HOST: ${{ secrets.TG_API_HOST }}
+        run: |
+          API="${TG_API_HOST:-https://api.telegram.org}"
+          if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then echo "未配置 Telegram，跳过推送"; exit 0; fi
+          curl -s -X POST "$API/bot$TG_BOT_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$TG_CHAT_ID" \
+            --data-urlencode "text=⚠️ EUserv 系统提示：renewal_state.json 已损坏并被自动修复重置，本次运行将按合同页面自愈续期日期。" \
+            --max-time 20 || true
+
+      - name: Notify workflow failure
+        if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_USER_ID }}
+          TG_API_HOST: ${{ secrets.TG_API_HOST }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -f .crash_notified ]; then echo "脚本已自行推送崩溃通知，跳过重复推送"; exit 0; fi
+          API="${TG_API_HOST:-https://api.telegram.org}"
+          if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then echo "未配置 Telegram，跳过推送"; exit 0; fi
+          curl -s -X POST "$API/bot$TG_BOT_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$TG_CHAT_ID" \
+            --data-urlencode "text=⚠️ EUserv 系统错误：续期工作流发生系统级失败（环境/闸门/依赖等），本次未执行续期。日志: $RUN_URL" \
+            --max-time 20 || true
 
       - name: Keep repository schedule alive
         if: always()
