@@ -5,6 +5,7 @@ import json
 from euserv_renew import (
     parse_contract_status,
     private_label,
+    read_renewal_state,
     redact_sensitive,
     renewal_due_date_reached,
     write_renewal_state,
@@ -74,3 +75,24 @@ def test_stop_date_comes_from_contract_due_date():
     assert not renewal_due_date_reached("2026-09-09", today=date(2026, 9, 8))
     assert renewal_due_date_reached("2026-09-09", today=date(2026, 9, 9))
     assert renewal_due_date_reached("2026-09-09", today=date(2026, 9, 10))
+
+
+def test_read_renewal_state_survives_corrupted_json(tmp_path, monkeypatch):
+    state_file = tmp_path / "renewal_state.json"
+    state_file.write_text(
+        '{\\"next_renewal_date\\":\\"2026-10-09\\"}', encoding="utf-8"
+    )
+    monkeypatch.setattr("euserv_renew.RENEWAL_STATE_FILE", str(state_file))
+
+    assert read_renewal_state() == {}
+
+
+def test_read_renewal_state_returns_valid_dict(tmp_path, monkeypatch):
+    state_file = tmp_path / "renewal_state.json"
+    state_file.write_text(
+        json.dumps({"next_renewal_date": "2026-11-09", "status": "waiting"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("euserv_renew.RENEWAL_STATE_FILE", str(state_file))
+
+    assert read_renewal_state()["next_renewal_date"] == "2026-11-09"
