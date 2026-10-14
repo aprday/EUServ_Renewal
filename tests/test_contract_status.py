@@ -10,6 +10,7 @@ from euserv_renew import (
     renewal_due_date_reached,
     write_renewal_state,
 )
+from euserv_renew import AccountConfig, EUserv, TimeoutSession
 
 
 def test_future_renewal_date_is_not_renewable():
@@ -75,6 +76,56 @@ def test_stop_date_comes_from_contract_due_date():
     assert not renewal_due_date_reached("2026-09-09", today=date(2026, 9, 8))
     assert renewal_due_date_reached("2026-09-09", today=date(2026, 9, 9))
     assert renewal_due_date_reached("2026-09-09", today=date(2026, 9, 10))
+
+
+def _load_repair_module():
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "tools" / "repair_state.py"
+    spec = importlib.util.spec_from_file_location("repair_state", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_repair_state_fixes_corrupted_file(tmp_path, monkeypatch):
+    module = _load_repair_module()
+    state_file = tmp_path / "renewal_state.json"
+    state_file.write_text(
+        '{\\"next_renewal_date\\":\\"2026-10-09\\"}', encoding="utf-8"
+    )
+    monkeypatch.setattr(module, "STATE_FILE", state_file)
+
+    assert module.main() == 0
+
+    repaired = json.loads(state_file.read_text(encoding="utf-8"))
+    assert repaired["status"] == "waiting"
+    assert repaired["next_renewal_date"] == ""
+    assert list(tmp_path.glob("renewal_state.broken-*.json"))
+
+
+def test_repair_state_leaves_valid_file_untouched(tmp_path, monkeypatch):
+    module = _load_repair_module()
+    state_file = tmp_path / "renewal_state.json"
+    state_file.write_text(
+        json.dumps({"next_renewal_date": "2026-11-09", "status": "waiting"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "STATE_FILE", state_file)
+
+    assert module.main() == 0
+
+    kept = json.loads(state_file.read_text(encoding="utf-8"))
+    assert kept["next_renewal_date"] == "2026-11-09"
+    assert not list(tmp_path.glob("renewal_state.broken-*.json"))
+
+
+def test_euserv_session_has_default_timeout(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    client = EUserv(AccountConfig("user@example.com", "secret"))
+
+    assert isinstance(client.session, TimeoutSession)
 
 
 def test_read_renewal_state_survives_corrupted_json(tmp_path, monkeypatch):
