@@ -1075,6 +1075,34 @@ class EUserv:
         except Exception as e:
             logger.error(f"❌ 获取服务器列表失败: {e}", exc_info=True)
             return {}
+
+    def _read_contract_detail_date(self, order_id: str) -> str:
+        """请求合同详情页解析下次可续期日期，用于续期后概览页为空时的验证。"""
+        url = "https://support.euserv.com/index.iphp"
+        headers = {
+            'user-agent': USER_AGENT,
+            'Host': 'support.euserv.com',
+            'origin': 'https://support.euserv.com',
+            'Referer': 'https://support.euserv.com/index.iphp',
+        }
+        data = {
+            'Submit': 'Extend contract',
+            'sess_id': self.sess_id,
+            'ord_no': order_id,
+            'subaction': 'choose_order',
+            'show_contract_extension': '1',
+            'choose_order_subaction': 'show_contract_details',
+        }
+        try:
+            response = self.session.post(url, headers=headers, data=data)
+            response.raise_for_status()
+        except Exception as e:
+            logger.warning(f"⚠️ 合同详情页请求失败: {type(e).__name__}")
+            return ""
+        match = re.search(
+            CONTRACT_EXTENSION_TEXT + r"\s*(\d{4}-\d{2}-\d{2})", response.text
+        )
+        return match.group(1) if match else ""
     
     @staticmethod
     def _write_renewed_marker() -> None:
@@ -1190,6 +1218,7 @@ class EUserv:
       
             resp5 = self.session.post(url, headers=headers, data=data)
             resp5.raise_for_status()
+            logger.info(f"续期提交响应状态码: {resp5.status_code}")
             # with open('debug_resp5.html', 'w', encoding='utf-8') as f:
             #     f.write(resp5.text)
             
@@ -1233,7 +1262,24 @@ class EUserv:
             else:
                 logger.error(
                     f"❌ 服务器 {private_label('contract', order_id)} "
-                    "续期后连续 5 次无法重新读取合同状态，判定为失败"
+                    "续期后连续 5 次无法重新读取合同状态，改用合同详情页验证"
+                )
+                detail_date = self._read_contract_detail_date(order_id)
+                if (
+                    detail_date
+                    and detail_date != previous_date
+                    and datetime.strptime(detail_date, "%Y-%m-%d").date()
+                    > datetime.today().date()
+                ):
+                    write_renewal_state(order_id, detail_date, status="waiting")
+                    logger.info(
+                        f"✅ 服务器 {private_label('contract', order_id)} "
+                        f"续期经合同详情页验证通过（新可续期日期: {detail_date}）"
+                    )
+                    return True
+                logger.error(
+                    f"❌ 服务器 {private_label('contract', order_id)} "
+                    "续期后概览页与详情页均无法确认新日期，判定为失败"
                 )
                 return False
             
