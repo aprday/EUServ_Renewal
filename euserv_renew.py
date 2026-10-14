@@ -86,6 +86,14 @@ if not hasattr(Image, 'ANTIALIAS'):
 ocr = ddddocr.DdddOcr(beta=True, show_ad=False)
 ocr_lock = threading.Lock()
 
+
+class TimeoutSession(requests.Session):
+    """带默认超时的会话，避免网络异常时无限挂起。"""
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", 60)
+        return super().request(*args, **kwargs)
+
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36"
 CAPTCHA_USERID = os.getenv("CAPTCHA_USERID", "")
 CAPTCHA_APIKEY = os.getenv("CAPTCHA_APIKEY", "")
@@ -172,6 +180,16 @@ def renewal_due_date_reached(due_date: str, today=None) -> bool:
         return False
 
 
+def _atomic_write(path: str, text: str) -> None:
+    """先写临时文件再原子替换，避免状态文件写到一半损坏。"""
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)
+
+
 def write_renewal_state(
     order_id: str, next_renewal_date: str, status: str = "waiting", detail: str = ""
 ) -> None:
@@ -182,9 +200,10 @@ def write_renewal_state(
         "detail": detail,
         "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
-    with open(RENEWAL_STATE_FILE, "w", encoding="utf-8") as state_file:
-        json.dump(state, state_file, ensure_ascii=False, indent=2)
-        state_file.write("\n")
+    _atomic_write(
+        RENEWAL_STATE_FILE,
+        json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+    )
     logger.info(f"✅ 已保存续期状态: {status}，下次日期: {next_renewal_date or '未知'}")
 
 
@@ -202,10 +221,10 @@ def read_renewal_state() -> dict:
 def write_cycle_marker(prefix: str, detail: str = "") -> str:
     """写入当前续期轮次的成功或停止标记。"""
     marker = f"{prefix}_{datetime.now().strftime('%Y-%m')}.txt"
-    with open(marker, "w", encoding="utf-8") as marker_file:
-        marker_file.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
-        if detail:
-            marker_file.write(detail + "\n")
+    marker_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n"
+    if detail:
+        marker_text += detail + "\n"
+    _atomic_write(marker, marker_text)
     logger.info(f"已写入续期轮次标记: {marker}")
     return marker
 
@@ -656,7 +675,7 @@ class EUserv:
 
     def __init__(self, config: AccountConfig):
         self.config = config
-        self.session = requests.Session()
+        self.session = TimeoutSession()
         self.sess_id = None
         self.c_id = None
         # 每个账号对应一个独立的 cookie 文件
@@ -1517,6 +1536,11 @@ def main():
     
     if not ACCOUNTS:
         logger.error("❌ 未配置任何账号")
+        send_notification(
+            "EUserv 系统错误",
+            "<b>⚠️ EUserv 系统错误</b>\n未配置任何有效账号，请检查 EUSERV_USERNAME 等 Secrets",
+            GLOBAL_CONFIG,
+        )
         sys.exit(1)
     
     # 使用线程池处理多个账号
@@ -1650,4 +1674,20 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException as crash:
+        logger.error(f"❌ 脚本意外崩溃: {crash}", exc_info=True)
+        try:
+            send_notification(
+                "EUserv 系统错误",
+                "<b>⚠️ EUserv 续期脚本崩溃</b>\n原因: " + redact_sensitive(crash),
+                GLOBAL_CONFIG,
+            )
+            with open(".crash_notified", "w", encoding="utf-8") as flag:
+                flag.write("1\n")
+        except Exception:
+            logger.error("崩溃通知发送失败", exc_info=True)
+        sys.exit(1)
